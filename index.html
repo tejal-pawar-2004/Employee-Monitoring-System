@@ -1,0 +1,389 @@
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | Monitor System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        .sidebar-item-active {
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 4px solid #3b82f6;
+        }
+
+        .glass-card {
+            background: white;
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(229, 231, 235, 1);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 10px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+        }
+
+        @media (max-width: 1024px) {
+            .sidebar-closed {
+                transform: translateX(-100%);
+            }
+
+            .sidebar-open {
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 text-gray-800 h-screen flex overflow-hidden">
+
+    <!-- Sidebar overlay for mobile -->
+    <div id="navOverlay" onclick="toggleNavDrawer()"
+        class="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 hidden lg:hidden"></div>
+
+    <!-- Sidebar (User List) -->
+    <aside id="navDrawer"
+        class="fixed lg:relative w-[300px] h-full bg-white border-r border-gray-200 z-40 transition-transform duration-300 sidebar-closed lg:translate-x-0 flex flex-col shrink-0">
+        <!-- Sidebar Header -->
+        <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div
+                    class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/20">
+                    <i class="fas fa-desktop text-white"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-gray-900 leading-tight">Monitor</h2>
+                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Admin Panel</p>
+                </div>
+            </div>
+            <button id="refreshUsersBtn" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 transition-colors">
+                <i class="fas fa-sync-alt text-sm"></i>
+            </button>
+        </div>
+
+        <!-- User Search -->
+        <div class="p-4">
+            <div class="relative group">
+                <i
+                    class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500"></i>
+                <input type="text" id="employeeSearchInput" placeholder="Search team..."
+                    class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-11 pr-4 text-sm focus:outline-none focus:border-blue-500 transition-all text-gray-900">
+            </div>
+        </div>
+
+        <!-- User List container -->
+        <div id="usersList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+            <!-- Injected by app.js -->
+            <div class="flex flex-col items-center justify-center p-8 text-gray-600">
+                <i class="fas fa-circle-notch fa-spin text-2xl mb-3"></i>
+                <p class="text-xs">Loading agents...</p>
+            </div>
+        </div>
+
+        <!-- Sidebar Footer Stats -->
+        <div class="p-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                <span class="text-gray-500">Online: <strong class="text-gray-900"
+                        id="sidebarOnlineCount">0</strong></span>
+            </div>
+            <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-gray-400"></div>
+                <span class="text-gray-500">Total: <strong class="text-gray-900" id="totalUserCount">0</strong></span>
+            </div>
+            <span id="sidebarOfflineCount" class="hidden">0</span>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col min-w-0 bg-gray-50 relative overflow-hidden">
+
+        <!-- Top Navigation -->
+        <header
+            class="h-20 border-b border-gray-200 flex items-center justify-between px-6 bg-white/50 backdrop-blur-md z-20">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleNavDrawer()" class="lg:hidden p-2 hover:bg-gray-100 rounded-lg text-gray-500">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="flex items-center gap-3">
+                    <h1 class="text-xl font-bold tracking-tight text-gray-900 hidden sm:block">Dashboard</h1>
+                    <div id="connectionStatus"
+                        class="flex items-center gap-2 px-3 py-1 bg-white border border-gray-200 rounded-full">
+                        <div class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse"></div>
+                        <span
+                            class="text-[10px] uppercase font-bold text-gray-500 tracking-wider font-mono">Connecting...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-6">
+                <!-- User name clearly visible in dark blue/gray -->
+                <span id="selectedUserNameHeader"
+                    class="hidden px-4 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-600/20 uppercase tracking-widest">
+                    -
+                </span>
+                <button id="logoutBtn"
+                    class="p-2.5 rounded-xl hover:bg-red-500/10 text-gray-500 hover:text-red-500 transition-all">
+                    <i class="fas fa-power-off"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- No User View -->
+        <div id="noUserSelected" class="flex-1 flex flex-col items-center justify-center p-6 text-center">
+            <div
+                class="w-32 h-32 rounded-[2.5rem] bg-white flex items-center justify-center mb-8 border border-gray-200 animate-pulse shadow-sm">
+                <i class="fas fa-users text-5xl text-gray-300"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 mb-2 tracking-tight">Select an Agent</h3>
+            <p class="text-gray-500 max-w-sm font-medium">Choose an employee from the left panel to begin real-time
+                monitoring and control.</p>
+        </div>
+
+        <!-- Dashboard View (Hidden by default) -->
+        <div id="userDashboard" class="hidden flex-1 flex flex-col overflow-y-auto custom-scrollbar p-6 space-y-6">
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Status Card -->
+                <div class="glass-card p-6 rounded-[1.5rem] flex items-center gap-5">
+                    <div class="w-14 h-14 rounded-2xl bg-green-500/10 flex items-center justify-center text-green-500">
+                        <i class="fas fa-signal text-2xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs uppercase font-extrabold text-gray-400 tracking-widest mb-1">
+                            Status</p>
+                        <h4 id="detailStatus" class="text-xl font-bold text-gray-900">Offline</h4>
+                    </div>
+                </div>
+                <!-- Screens Card -->
+                <div class="glass-card p-6 rounded-[1.5rem] flex items-center gap-5">
+                    <div class="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                        <i class="fas fa-camera text-2xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs uppercase font-extrabold text-gray-400 tracking-widest mb-1">
+                            Screenshots</p>
+                        <h4 id="detailScreenshots" class="text-xl font-bold text-gray-900">0</h4>
+                    </div>
+                </div>
+                <!-- App Card -->
+                <div class="glass-card p-6 rounded-[1.5rem] flex items-center gap-5 overflow-hidden">
+                    <div
+                        class="w-14 h-14 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+                        <i class="fas fa-window-restore text-2xl"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-xs uppercase font-extrabold text-gray-400 tracking-widest mb-1">
+                            Active App</p>
+                        <h4 id="detailApp" class="text-xl font-bold text-gray-900 truncate" title="-">-
+                        </h4>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Grid -->
+            <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+
+                <!-- Left: Actions & Logs -->
+                <div class="xl:col-span-4 space-y-6">
+                    <!-- Remote Controls -->
+                    <div class="glass-card p-6 rounded-[1.5rem]">
+                        <h3
+                            class="text-sm font-extrabold uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+                            <i class="fas fa-terminal text-xs"></i> Remote Control
+                        </h3>
+                        <div class="grid grid-cols-1 gap-3">
+                            <button onclick="triggerCommand('TAKE_SCREENSHOT')"
+                                class="w-full flex items-center gap-4 p-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold transition-all shadow-lg shadow-blue-600/10 py-5">
+                                <i class="fas fa-camera text-lg"></i>
+                                <span>Immediate Screenshot</span>
+                            </button>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button onclick="triggerCommand('GET_RUNNING_APPS')"
+                                    class="flex flex-col items-center justify-center gap-2 p-4 bg-gray-50 border border-gray-200 rounded-2xl hover:border-blue-500/50 transition-all group">
+                                    <i class="fas fa-layer-group text-gray-400 group-hover:text-blue-500"></i>
+                                    <span
+                                        class="text-[10px] font-bold uppercase tracking-widest text-gray-500 group-hover:text-blue-600">Running
+                                        Apps</span>
+                                </button>
+                                <button onclick="triggerCommand('GET_BROWSER_STATUS')"
+                                    class="flex flex-col items-center justify-center gap-2 p-4 bg-gray-50 border border-gray-200 rounded-2xl hover:border-purple-500/50 transition-all group">
+                                    <i class="fab fa-chrome text-gray-400 group-hover:text-purple-500"></i>
+                                    <span
+                                        class="text-[10px] font-bold uppercase tracking-widest text-gray-500 group-hover:text-purple-600">Browser
+                                        Tabs</span>
+                                </button>
+                            </div>
+                            <button onclick="showNotifyModal()"
+                                class="w-full flex items-center justify-center gap-3 p-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl font-bold transition-all">
+                                <i class="fas fa-paper-plane text-sm"></i>
+                                <span>Send Notification</span>
+                            </button>
+                            <button onclick="liveStreamManager.start(currentUserId)"
+                                class="for-live-stream w-full flex items-center justify-center gap-3 p-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all uppercase tracking-widest text-xs">
+                                <i class="fas fa-video"></i>
+                                <span>Start Live Feed</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Content Display -->
+                <div class="xl:col-span-8">
+                    <div class="glass-card rounded-[2rem] overflow-hidden flex flex-col h-full min-h-[600px]">
+                        <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                            <h3 id="liveFeedTitle"
+                                class="text-xs font-extrabold uppercase tracking-widest text-blue-400">Agent Viewport
+                            </h3>
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                    <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Live
+                                        Output</span>
+                                </div>
+                                <button id="expandScreenshotBtn" onclick="expandScreenshot()"
+                                    class="hidden p-2 hover:bg-gray-100 rounded-lg text-gray-400 transition-colors">
+                                    <i class="fas fa-expand"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="liveFeedContainer"
+                            class="flex-1 relative flex items-center justify-center bg-black overflow-hidden group">
+                            <!-- Placeholder -->
+                            <div id="feedPlaceholder"
+                                class="text-center opacity-20 group-hover:opacity-40 transition-opacity">
+                                <i class="fas fa-display text-8xl mb-6"></i>
+                                <p class="text-sm font-bold uppercase tracking-[0.3em]">Standby</p>
+                            </div>
+
+                            <!-- Image Display -->
+                            <img id="feedImage" class="hidden absolute inset-0 w-full h-full object-contain z-10"
+                                alt="Remote Screen">
+
+                            <!-- List Display (Apps/Tabs) -->
+                            <div id="feedList"
+                                class="hidden absolute inset-0 z-20 p-6 overflow-y-auto custom-scrollbar bg-black/90 backdrop-blur-sm">
+                            </div>
+
+                            <!-- Loading Overlay -->
+                            <div id="feedLoading"
+                                class="hidden absolute inset-0 z-30 bg-black/60 backdrop-blur-md flex items-center justify-center">
+                                <i class="fas fa-circle-notch fa-spin text-4xl text-blue-500"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <!-- Screenshot Preview Modal -->
+    <div id="screenshotModal" onclick="closeModal()"
+        class="fixed inset-0 z-[100] hidden bg-black/90 backdrop-blur-xl flex flex-col p-6 cursor-zoom-out">
+        <div class="flex justify-end gap-4 mb-4" onclick="event.stopPropagation()">
+            <a id="downloadLink" href="#" download="monitor_capture.png"
+                class="w-12 h-12 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-center text-white transition-all">
+                <i class="fas fa-download"></i>
+            </a>
+            <button onclick="closeModal()"
+                class="w-12 h-12 bg-red-500/20 hover:bg-red-500 rounded-2xl flex items-center justify-center text-red-500 hover:text-white transition-all">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-hidden pointer-events-none">
+            <img id="screenshotPreview" class="w-full h-full object-contain" src="">
+        </div>
+    </div>
+
+    <!-- Notify Modal -->
+    <div id="notifyModal"
+        class="fixed inset-0 z-[100] hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="glass-card w-full max-w-md p-8 rounded-[2.5rem] shadow-2xl">
+            <div class="flex items-center gap-4 mb-8">
+                <div class="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                    <i class="fas fa-paper-plane text-xl"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-900 tracking-tight">Send Message</h3>
+            </div>
+            <div class="space-y-4">
+                <input id="notifyTitle"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm focus:outline-none focus:border-blue-500 text-gray-900"
+                    placeholder="Notification Title">
+                <textarea id="notifyMessage"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm focus:outline-none focus:border-blue-500 h-32 text-gray-900"
+                    placeholder="Write your message..."></textarea>
+            </div>
+            <div class="flex gap-4 mt-8">
+                <button onclick="document.getElementById('notifyModal').classList.add('hidden')"
+                    class="flex-1 py-4 text-gray-500 font-bold hover:bg-gray-100 rounded-2xl transition-all">Cancel</button>
+                <button onclick="sendNotification()"
+                    class="flex-1 py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/20 transition-all">Send
+                    Now</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleNavDrawer() {
+            const drawer = document.getElementById('navDrawer');
+            const overlay = document.getElementById('navOverlay');
+            drawer.classList.toggle('sidebar-closed');
+            drawer.classList.toggle('sidebar-open');
+            overlay.classList.toggle('hidden');
+        }
+    </script>
+    <!-- Admin Notification Toast -->
+    <div id="adminNotificationToast"
+        class="fixed bottom-6 right-6 z-[150] w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 transform translate-y-24 opacity-0 transition-all duration-500 ease-out">
+        <div class="flex items-start gap-3">
+            <div
+                class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-blue-600/20">
+                <i class="fas fa-comment-dots"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between mb-1">
+                    <h5 id="adminToastUser" class="text-xs font-black text-gray-900 uppercase tracking-wider">-</h5>
+                    <button onclick="hideAdminToast()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <i class="fas fa-times text-[10px]"></i>
+                    </button>
+                </div>
+                <p id="adminToastMsg" class="text-xs text-gray-600 font-medium leading-relaxed italic">
+                    -
+                </p>
+                <div
+                    class="mt-2 flex items-center gap-1.5 text-[9px] font-bold text-emerald-500 uppercase tracking-widest">
+                    <div class="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></div>
+                    New Reply Received
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/live_feed.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
