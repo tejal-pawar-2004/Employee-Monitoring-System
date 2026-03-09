@@ -86,6 +86,24 @@
         <div class="glass p-8 rounded-[2rem] shadow-2xl">
             <form id="loginForm" class="space-y-6">
                 <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2 ml-1 uppercase tracking-wider">Select
+                        Organization</label>
+                    <div class="relative group">
+                        <i
+                            class="fas fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors"></i>
+                        <select id="organization"
+                            class="w-full bg-white border border-gray-200 rounded-xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none input-focus transition-all appearance-none cursor-pointer">
+                            <option value="a3ea1cda-c735-4798-8219-54bbb07795a9">The Baap Company</option>
+                            <option value="b2f1c8d9-e3a4-4b5c-8d1e-2f3a4b5c6d7e">The Baap Technology</option>
+                            <option value="c3f2d9e0-f4b5-4c6d-9e1f-3a4b5c6d7e8f">Baap Networks</option>
+                            <option value="d4e3f0a1-a5b6-4d7e-af20-4b5c6d7e8f9a">Baap Solutions</option>
+                        </select>
+                        <i
+                            class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                    </div>
+                </div>
+
+                <div>
                     <label class="block text-sm font-bold text-gray-700 mb-2 ml-1 uppercase tracking-wider">Email
                         Address</label>
                     <div class="relative group">
@@ -131,8 +149,12 @@
 
     <script src="js/api.js"></script>
     <script>
+        // Instantiate the API client
+        window.api = new APIClient();
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const organizationId = document.getElementById('organization').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const errorContainer = document.getElementById('errorContainer');
@@ -145,42 +167,12 @@
             errorContainer.classList.add('hidden');
 
             try {
-                // Ensure API URL is correct
-                const API_URL = 'https://empmonitoring.duckdns.org/api/v1';
-                // const API_URL = 'http://localhost:8000/api/v1';
-                // const API_URL = 'https://nonobstetrically-nonoptical-raymundo.ngrok-free.dev/api/v1';
-
-
-                const response = await fetch(`${API_URL}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        email: email,
-                        password: password,
-                        device_id: 'ADMIN_CONSOLE'
-                    })
-                });
-
-                let data;
-                const contentType = response.headers.get("content-type");
-                if (contentType && contentType.indexOf("application/json") !== -1) {
-                    data = await response.json();
-                } else {
-                    data = { detail: await response.text() };
-                }
-
-                if (!response.ok) {
-                    throw new Error(data.detail || 'Access Denied');
-                }
-
-                if (data.access_token) {
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('admin_name', data.user ? data.user.name : 'Administrator');
+                // Use the centralized APIClient (window.api) which now handles 
+                // external authentication and SuperAdmin role validation.
+                const success = await window.api.login(email, password, organizationId);
+                if (success) {
                     window.location.href = 'index.html';
-                } else {
-                    throw new Error("Invalid authentication response");
                 }
-
             } catch (err) {
                 errorMsg.textContent = err.message || "Connection failed";
                 errorContainer.classList.remove('hidden');

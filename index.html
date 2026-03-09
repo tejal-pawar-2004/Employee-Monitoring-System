@@ -280,6 +280,10 @@
                             <img id="feedImage" class="hidden absolute inset-0 w-full h-full object-contain z-10"
                                 alt="Remote Screen">
 
+                            <!-- Video Display (WebRTC) -->
+                            <video id="feedVideo" class="hidden absolute inset-0 w-full h-full object-contain z-10"
+                                autoplay playsinline muted></video>
+
                             <!-- List Display (Apps/Tabs) -->
                             <div id="feedList"
                                 class="hidden absolute inset-0 z-20 p-6 overflow-y-auto custom-scrollbar bg-black/90 backdrop-blur-sm">
@@ -287,8 +291,11 @@
 
                             <!-- Loading Overlay -->
                             <div id="feedLoading"
-                                class="hidden absolute inset-0 z-30 bg-black/60 backdrop-blur-md flex items-center justify-center">
-                                <i class="fas fa-circle-notch fa-spin text-4xl text-blue-500"></i>
+                                class="hidden absolute inset-0 z-50 bg-[#0f172a] flex flex-col items-center justify-center">
+                                <i class="fas fa-circle-notch fa-spin text-5xl text-blue-500 mb-4"></i>
+                                <span
+                                    class="text-blue-400 text-xs font-bold tracking-[0.2em] uppercase animate-pulse">Establishing
+                                    Connection...</span>
                             </div>
                         </div>
                     </div>
@@ -345,15 +352,6 @@
         </div>
     </div>
 
-    <script>
-        function toggleNavDrawer() {
-            const drawer = document.getElementById('navDrawer');
-            const overlay = document.getElementById('navOverlay');
-            drawer.classList.toggle('sidebar-closed');
-            drawer.classList.toggle('sidebar-open');
-            overlay.classList.toggle('hidden');
-        }
-    </script>
     <!-- Admin Notification Toast -->
     <div id="adminNotificationToast"
         class="fixed bottom-6 right-6 z-[150] w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 transform translate-y-24 opacity-0 transition-all duration-500 ease-out">

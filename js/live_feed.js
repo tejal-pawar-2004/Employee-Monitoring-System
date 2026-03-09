@@ -1,8 +1,10 @@
 class LiveStreamManager {
     constructor() {
         this.ws = null;
+        this.pc = null;
         this.activeUserId = null;
         this.imageEl = document.getElementById('feedImage');
+        this.videoEl = document.getElementById('feedVideo');
         this.placeholderEl = document.getElementById('feedPlaceholder');
         this.loadingEl = document.getElementById('feedLoading');
         this.titleEl = document.getElementById('liveFeedTitle');
@@ -39,6 +41,14 @@ class LiveStreamManager {
         // Update Button UI
         this._updateButtonState(true);
 
+        // Show the spinner immediately upon initialization using the global UI updater
+        if (typeof updateLiveFeed === 'function') {
+            updateLiveFeed('loading');
+        } else if (this.loadingEl) {
+            this.loadingEl.classList.remove('hidden');
+            this.loadingEl.style.display = 'flex';
+        }
+
         // Notify backend to signal client
         if (window.api) {
             window.api.startLiveStream(userId).then(resp => {
@@ -57,9 +67,12 @@ class LiveStreamManager {
     _connect() {
         if (!this.activeUserId || this.isManuallyStopped) return;
 
-        // Show loading state if not already showing image (avoid flickering on reconnect)
-        if (this.imageEl.classList.contains('hidden')) {
+        // ALWAYS show loading state immediately
+        if (typeof updateLiveFeed === 'function') {
+            updateLiveFeed('loading');
+        } else if (this.loadingEl) {
             this.loadingEl.classList.remove('hidden');
+            this.loadingEl.style.display = 'flex';
         }
 
         if (this.titleEl) this.titleEl.textContent = 'Connecting to Live Stream...';
@@ -87,62 +100,186 @@ class LiveStreamManager {
             protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         }
 
+        // THE PURPOSE: Connect to the new WebRTC signaling endpoint to exchange connection details with the desktop agent.
+        // THE REPLACEMENT: Replaced the old WebSocket connection to `/admin/{userId}` that used to receive continuous base64 images from the server.
         const token = localStorage.getItem('access_token');
-        const wsUrl = `${protocol}//${host}/api/v1/ws/admin/${this.activeUserId}?token=${token}`;
+        const wsUrl = `${protocol}//${host}/api/v1/ws/ws?role=viewer&room_id=${this.activeUserId}&token=${token}`;
 
         if (window.api) window.api.debugLog(`Attempting WS to: ${wsUrl}`);
 
-        console.log(`Connecting to Stream: ${wsUrl}`);
+        console.log(`Connecting signaling websocket to: ${wsUrl}`);
 
         try {
             this.ws = new WebSocket(wsUrl);
-            this.ws.binaryType = 'arraybuffer';
+            // We use text for JSON signaling
+            this.ws.binaryType = 'blob';
         } catch (e) {
             if (window.api) window.api.debugLog(`WS constructor error: ${e.message}`);
         }
 
-        this.ws.onopen = () => {
-            if (window.api) window.api.debugLog(`WS Opened for ${this.activeUserId}`);
-            console.log("Stream WebSocket Connected");
-            this.loadingEl.classList.add('hidden');
+        this.ws.onopen = async () => {
+            if (window.api) window.api.debugLog(`Signaling WS Opened for ${this.activeUserId}`);
+            console.log("Signaling WebSocket Connected");
+            // Wait for video frame to actually render before hiding loading spinner
+            const hideLoadingSpinner = () => {
+                if (this.loadingEl) {
+                    this.loadingEl.classList.add('hidden');
+                    this.loadingEl.style.display = 'none';
+                }
+            };
+            this.videoEl.onloadeddata = hideLoadingSpinner;
+            this.videoEl.onplaying = hideLoadingSpinner;
+            this.videoEl.onplay = hideLoadingSpinner;
             this.placeholderEl.style.display = 'none';
-            this.imageEl.style.display = 'block';
-            this.imageEl.classList.remove('hidden');
+            // Hide image fallback, show video for WebRTC
+            this.imageEl.style.display = 'none';
+            this.videoEl.style.display = 'block';
+            this.videoEl.classList.remove('hidden');
             window.currentLiveFeedMode = 'live';
 
             if (this.titleEl) {
-                this.titleEl.innerHTML = '<i class="fas fa-video text-emerald-500 mr-2 animate-pulse"></i> LIVE STREAMING';
+                this.titleEl.innerHTML = '<i class="fas fa-video text-emerald-500 mr-2 animate-pulse"></i> LIVE STREAMING (P2P)';
+            }
+
+            // THE PURPOSE: Create the built-in browser engine for peer-to-peer video streaming (WebRTC). It uses STUN/TURN servers to find the best direct path to the desktop agent.
+            // THE REPLACEMENT: Completely replaces the old method of assigning base64 strings to an image element's `.src` property. This provides native video playback and is much smoother.
+            const configuration = {
+                iceServers: [
+                    {
+                        urls: 'stun:stun.l.google.com:19302' // Free public STUN server
+                    },
+                    {
+                        urls: 'turn:turn.example.com:3478', // Replace with valid TURN server for production
+                        username: 'your_turn_username',
+                        credential: 'your_turn_password'
+                    }
+                ]
+            };
+
+            this.pc = new RTCPeerConnection(configuration);
+
+            // Handle incoming tracks (video stream)
+            this.pc.ontrack = (event) => {
+                console.log("Received remote track:", event.streams[0]);
+
+                const attemptPlay = () => {
+                    const vid = document.getElementById('feedVideo') || this.videoEl;
+                    if (vid) {
+                        if (vid.srcObject !== event.streams[0]) {
+                            vid.srcObject = event.streams[0];
+                        }
+                        vid.play().then(() => {
+                            if (this.loadingEl) {
+                                this.loadingEl.classList.add('hidden');
+                                this.loadingEl.style.display = 'none';
+                            }
+                        }).catch(e => console.warn("play() failed:", e));
+                    } else {
+                        setTimeout(attemptPlay, 100);
+                    }
+                };
+                attemptPlay();
+
+                // Fallback: hide immediately when track arrives, just in case DOM events fail
+                if (this.loadingEl) {
+                    this.loadingEl.classList.add('hidden');
+                    this.loadingEl.style.display = 'none';
+                }
+
+                if (!this.isStreaming) {
+                    this.isStreaming = true;
+                    this._updateButtonState(true);
+                }
+            };
+
+            // Network Gathering: Trickle ICE Candidate
+            this.pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    this.ws.send(JSON.stringify({
+                        type: 'ice_candidate',
+                        candidate: event.candidate.candidate,
+                        sdpMid: event.candidate.sdpMid,
+                        sdpMLineIndex: event.candidate.sdpMLineIndex
+                    }));
+                }
+            };
+
+            this.pc.onconnectionstatechange = () => {
+                console.log("WebRTC Connection State:", this.pc.connectionState);
+                if (this.pc.connectionState === 'disconnected' || this.pc.connectionState === 'failed') {
+                    if (this.titleEl) this.titleEl.textContent = 'Stream Disconnected/Failed.';
+                }
+            };
+
+            this.pc.oniceconnectionstatechange = () => {
+                console.log("ICE Connection State:", this.pc.iceConnectionState);
+                if (this.pc.iceConnectionState === 'disconnected' || this.pc.iceConnectionState === 'failed') {
+                    if (this.titleEl) this.titleEl.textContent = 'Connection Blocked by Firewall.';
+                    // Show error overlay
+                    if (this.placeholderEl) {
+                        this.placeholderEl.style.display = 'block';
+                        this.placeholderEl.innerHTML = `
+                            <div class="text-center p-6 bg-red-900/40 rounded-2xl border border-red-500/50 backdrop-blur-md">
+                                <i class="fas fa-shield-alt text-red-500 text-6xl mb-4 drop-shadow-lg"></i>
+                                <h3 class="text-white font-bold text-lg mb-2">Connection Blocked by Firewall</h3>
+                                <p class="text-red-200 text-xs font-semibold uppercase tracking-widest">(TURN Server Required)</p>
+                            </div>
+                        `;
+                    }
+                    if (this.videoEl) this.videoEl.style.display = 'none';
+                    if (this.loadingEl) {
+                        this.loadingEl.classList.add('hidden');
+                        this.loadingEl.style.display = 'none';
+                    }
+                }
+            };
+
+            // The Viewer (Admin) is the initiator: Create Offer
+            // We must add a transceiver to signal we want to receive video, 
+            // since we are just receiving and not sending tracks initially.
+            this.pc.addTransceiver('video', { direction: 'recvonly' });
+
+            try {
+                const offer = await this.pc.createOffer();
+                await this.pc.setLocalDescription(offer);
+                this.ws.send(JSON.stringify({
+                    type: offer.type,
+                    sdp: offer.sdp
+                }));
+                console.log("Sent WebRTC Offer");
+            } catch (err) {
+                console.error("Error creating WebRTC offer:", err);
             }
         };
 
-        this.ws.onmessage = (event) => {
-            const blob = new Blob([event.data], { type: 'image/jpeg' });
-            const url = URL.createObjectURL(blob);
+        this.ws.onmessage = async (event) => {
+            try {
+                const message = JSON.parse(event.data);
 
-            if (this.imageEl.src.startsWith('blob:')) {
-                URL.revokeObjectURL(this.imageEl.src);
+                if (message.type === 'answer') {
+                    console.log("Received WebRTC Answer");
+                    await this.pc.setRemoteDescription(new RTCSessionDescription(message));
+                } else if (message.type === 'ice_candidate') {
+                    await this.pc.addIceCandidate(new RTCIceCandidate({
+                        candidate: message.candidate,
+                        sdpMid: message.sdpMid,
+                        sdpMLineIndex: message.sdpMLineIndex
+                    }));
+                }
+            } catch (err) {
+                console.error("Error handling signaling message:", err, event.data);
             }
-
-            this.imageEl.src = url;
-            this.imageEl.style.display = 'block';
-
-            // Ensure UI is in sync (in case it drifted)
-            if (!this.isStreaming) {
-                this.isStreaming = true;
-                this._updateButtonState(true);
-            }
-            window.currentLiveFeedMode = 'live';
         };
 
         this.ws.onerror = (error) => {
             if (window.api) window.api.debugLog(`WS Error occurred`);
-            console.error("Stream WebSocket Error:", error);
+            console.error("Signaling WebSocket Error:", error);
             // Close will trigger onclose
         };
 
         this.ws.onclose = (event) => {
             if (window.api) window.api.debugLog(`WS Closed. Code: ${event.code}, Reason: ${event.reason}`);
-            console.log("Stream WebSocket Closed");
+            console.log("Signaling WebSocket Closed");
             window.currentLiveFeedMode = 'reset';
 
             // If it was NOT manually stopped, it's an unexpected closure (or error)
@@ -177,6 +314,12 @@ class LiveStreamManager {
             this.ws.close();
             this.ws = null;
         }
+
+        if (this.pc) {
+            this.pc.close();
+            this.pc = null;
+        }
+
         this.activeUserId = null;
 
         // UI Reset
@@ -184,10 +327,17 @@ class LiveStreamManager {
             URL.revokeObjectURL(this.imageEl.src);
             this.imageEl.src = '';
         }
+        if (this.videoEl) {
+            this.videoEl.srcObject = null;
+            this.videoEl.style.display = 'none';
+        }
 
         this.imageEl.style.display = 'none';
         this.placeholderEl.style.display = 'block';
-        this.loadingEl.classList.add('hidden');
+        if (this.loadingEl) {
+            this.loadingEl.classList.add('hidden');
+            this.loadingEl.style.display = 'none';
+        }
         if (this.titleEl) this.titleEl.textContent = 'Live Feed';
     }
 

@@ -141,6 +141,17 @@ async function loadDashboard() {
         }
     } catch (err) {
         console.error("Dashboard refresh failed", err);
+        const listContainer = document.getElementById('usersList');
+        if (listContainer) {
+            listContainer.innerHTML = `
+                <div class="flex flex-col items-center justify-center p-8 text-red-500 text-center">
+                    <i class="fas fa-exclamation-triangle text-2xl mb-3"></i>
+                    <p class="text-xs font-bold uppercase tracking-widest">Failed to load agents</p>
+                    <p class="text-[10px] text-gray-400 mt-2">${err.message}</p>
+                    <button onclick="loadDashboard()" class="mt-4 px-4 py-2 bg-blue-600 text-white text-[10px] font-bold rounded-lg hover:bg-blue-700 transition-colors uppercase tracking-widest">Retry</button>
+                </div>
+            `;
+        }
     } finally {
         // Stop spin animation
         if (refreshIcon) {
@@ -232,6 +243,14 @@ function selectUser(user, isOnline) {
     // UI Updates
     document.getElementById('noUserSelected').classList.add('hidden');
     document.getElementById('userDashboard').classList.remove('hidden');
+
+    // Auto-close sidebar on mobile if open
+    if (window.innerWidth < 1024) {
+        const drawer = document.getElementById('navDrawer');
+        if (drawer && drawer.classList.contains('sidebar-open')) {
+            toggleNavDrawer();
+        }
+    }
 
     // Header Name
     const headerName = document.getElementById('selectedUserNameHeader');
@@ -747,11 +766,17 @@ function toggleNavDrawer() {
     const drawer = document.getElementById('navDrawer');
     const overlay = document.getElementById('navOverlay');
 
-    if (drawer.classList.contains('translate-x-full')) {
-        drawer.classList.remove('translate-x-full');
+    if (!drawer || !overlay) return;
+
+    const isClosed = drawer.classList.contains('sidebar-closed');
+
+    if (isClosed) {
+        drawer.classList.remove('sidebar-closed');
+        drawer.classList.add('sidebar-open');
         overlay.classList.remove('hidden');
     } else {
-        drawer.classList.add('translate-x-full');
+        drawer.classList.add('sidebar-closed');
+        drawer.classList.remove('sidebar-open');
         overlay.classList.add('hidden');
     }
 }

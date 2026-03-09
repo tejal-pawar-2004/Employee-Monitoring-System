@@ -2,6 +2,7 @@ class APIClient {
     constructor() {
         // this.baseUrl = "http://localhost:8000/api/v1";
         this.baseUrl = "https://empmonitoring.duckdns.org/api/v1";
+        // this.baseUrl = "http://emp-monitoring.duckdns.org/api/v1";
         // this.baseUrl = "https://nonobstetrically-nonoptical-raymundo.ngrok-free.dev/api/v1";
 
         this.token = localStorage.getItem('access_token');
@@ -100,30 +101,46 @@ class APIClient {
         }
     }
 
-    async login(email, password) {
-        // We use the same login endpoint but admin must have superuser status. 
-        // Backend currently doesn't separate endpoints, but returns user object.
-        // We will check user role after login or let backend handle permissions on subsequent calls.
-        const response = await fetch(`${this.baseUrl}/auth/login`, {
+    parseJwt(token) {
+        try {
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(function (c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async login(email, password, clientId = null) {
+        const authUrl = "https://platform-development-dev.157.20.214.214.nip.io/auth/api/auth/login";
+
+        console.log(`Attempting login for ${email} in organization: ${clientId || 'None'}`);
+
+        const response = await fetch(authUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true'
+                'Accept': 'application/json'
             },
-            body: JSON.stringify({
-                email: email,
-                password: password,
-                device_id: 'ADMIN_CONSOLE'
-            })
+            body: JSON.stringify({ email, password })
         });
 
-        if (!response.ok) return false;
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Authentication failed');
+        }
 
         const data = await response.json();
-        // Check if user is actually admin in response? 
-        // For MVP we just store token. If they aren't admin, subsequent API calls will fail (403/400).
-        localStorage.setItem('access_token', data.access_token);
-        localStorage.setItem('admin_name', data.user ? data.user.name : 'Admin');
+        const token = data.access_token || data.token;
+
+        if (!token) throw new Error("Invalid response from auth server");
+
+        localStorage.setItem('access_token', token);
+        localStorage.setItem('admin_name', data.user ? (data.user.first_name + " " + data.user.last_name) : 'Administrator');
+        this.token = token;
         return true;
     }
 
@@ -203,6 +220,20 @@ class APIClient {
                 body: JSON.stringify({ message })
             });
         } catch (e) { }
+    }
+
+    async checkConnection() {
+        try {
+            await this.request('/', 'GET');
+            return true;
+        } catch (e) {
+            // Might return 404 or 401 if '/' is protected, but if we get a response it's connected
+            // Let's just catch network errors (where fetch throws)
+            if (e.message !== "Request failed" && !e.message.includes("Failed to fetch")) {
+                return true; // Reached server but got a HTTP error
+            }
+            return false;
+        }
     }
 
     logout() {
