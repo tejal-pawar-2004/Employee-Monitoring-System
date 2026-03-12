@@ -145,14 +145,11 @@ class LiveStreamManager {
             // THE REPLACEMENT: Completely replaces the old method of assigning base64 strings to an image element's `.src` property. This provides native video playback and is much smoother.
             const configuration = {
                 iceServers: [
-                    {
-                        urls: 'stun:stun.l.google.com:19302' // Free public STUN server
-                    },
-                    {
-                        urls: 'turn:turn.example.com:3478', // Replace with valid TURN server for production
-                        username: 'your_turn_username',
-                        credential: 'your_turn_password'
-                    }
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' }
                 ]
             };
 
@@ -207,7 +204,9 @@ class LiveStreamManager {
             this.pc.onconnectionstatechange = () => {
                 console.log("WebRTC Connection State:", this.pc.connectionState);
                 if (this.pc.connectionState === 'disconnected' || this.pc.connectionState === 'failed') {
-                    if (this.titleEl) this.titleEl.textContent = 'Stream Disconnected/Failed.';
+                    const errorMsg = this.pc.connectionState === 'failed' ? 'Connection Failed: Firewall Blocked' : 'Stream Disconnected.';
+                    if (this.titleEl) this.titleEl.textContent = errorMsg;
+                    console.error("WebRTC Critical State:", this.pc.connectionState);
                 }
             };
 

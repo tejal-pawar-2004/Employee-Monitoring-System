@@ -2,6 +2,7 @@ const api = new APIClient();
 window.api = api;
 let currentUserId = null;
 let commandPollInterval = null;
+let selectionAbortController = null;
 let currentBrowserData = null; // Added for browser drill-down
 let allUsersData = [];
 let onlineUsersData = [];
@@ -12,10 +13,10 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
     loadDashboard();
 
-    // Auto-refresh stats/users every 10s
+    // Auto-refresh stats/users every 20s
     setInterval(() => {
         if (document.visibilityState === 'visible') loadDashboard();
-    }, 10000);
+    }, 20000);
 
     document.getElementById('logoutBtn').addEventListener('click', () => api.logout());
     document.getElementById('refreshUsersBtn').addEventListener('click', loadDashboard);
@@ -134,12 +135,11 @@ async function loadDashboard() {
         updateStats(onlineData.users.length, allUsers.length);
         renderUserList(allUsers, onlineData.users, filterText);
 
-        // If a user is currently selected, refresh their specific details too
+        // If a user is currently selected, refresh their specific stats
         if (currentUserId) {
-            loadScreenshotCount(currentUserId);
-            // Only auto-load screenshot if we are currently in image mode
-            if (currentLiveFeedMode === 'image' || currentLiveFeedMode === 'reset') {
-                loadLatestScreenshot(currentUserId);
+            // Avoid redundant calls if selectUser just started its own refresh
+            if (!selectionAbortController || selectionAbortController.signal.aborted) {
+                loadScreenshotCount(currentUserId);
             }
         }
     } catch (err) {
@@ -240,8 +240,21 @@ function renderUserList(allUsers, onlineUsers, filterText = '') {
     });
 }
 
-function selectUser(user, isOnline) {
+async function selectUser(user, isOnline) {
+    console.log(`[selectUser] Triggered for user ${user.id} (${user.name}). isOnline: ${isOnline}`);
+    if (currentUserId === user.id && window.currentLiveFeedMode !== 'reset') {
+        console.log("[selectUser] User already selected, skipping full reset");
+        return;
+    }
+
     currentUserId = user.id;
+
+    // Abort any pending selection requests
+    if (selectionAbortController) {
+        selectionAbortController.abort();
+    }
+    selectionAbortController = new AbortController();
+    const signal = selectionAbortController.signal;
 
     // Stop and clear any active polling from previous user
     if (commandPollInterval) {
@@ -254,9 +267,11 @@ function selectUser(user, isOnline) {
         window.liveStreamManager.stop();
     }
 
-    // UI Updates
-    document.getElementById('noUserSelected').classList.add('hidden');
-    document.getElementById('userDashboard').classList.remove('hidden');
+    // UI Updates - Immediate feedback
+    const noUserView = document.getElementById('noUserSelected');
+    const userDashboard = document.getElementById('userDashboard');
+    if (noUserView) noUserView.classList.add('hidden');
+    if (userDashboard) userDashboard.classList.remove('hidden');
 
     // Auto-close sidebar on mobile if open
     if (window.innerWidth < 1024) {
@@ -273,7 +288,7 @@ function selectUser(user, isOnline) {
         headerName.classList.remove('hidden');
     }
 
-    // Detail Stats
+    // Detail Stats - Status
     const statusEl = document.getElementById('detailStatus');
     if (statusEl) {
         statusEl.textContent = isOnline ? 'Online' : 'Offline';
@@ -282,32 +297,45 @@ function selectUser(user, isOnline) {
             : 'text-2xl font-extrabold text-gray-800 mt-0.5';
     }
 
+    // Highlight active user in the sidebar without a network hit
+    const searchInput = document.getElementById('employeeSearchInput');
+    const filterText = searchInput ? searchInput.value : '';
+    renderUserList(allUsersData, onlineUsersData, filterText);
+
     // Reset Live Feed
     updateLiveFeed('reset');
-
-    // Refresh List to show active state
-    loadDashboard();
 
     // Clear logs
     clearLogs();
     log(`Selected user: ${user.name}`);
-    loadHistory(user.id);
-
-    // Load latest screenshot automatically - this resets the view to Image
-    loadLatestScreenshot(user.id, true);
-
-    // Load screenshot count for today
-    loadScreenshotCount(user.id);
+    
+    // Load data concurrently with signal support
+    try {
+        await Promise.all([
+            loadScreenshotCount(user.id, signal),
+            loadLatestScreenshot(user.id, true, signal),
+            loadHistory(user.id)
+        ]);
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            console.log("Selection request aborted for user:", user.id);
+        } else {
+            console.error("Failed to load user data:", err);
+        }
+    }
 }
 
-async function loadScreenshotCount(userId) {
+async function loadScreenshotCount(userId, signal = null) {
+    console.log(`[loadScreenshotCount] Loading for user ${userId}. Signal: ${signal ? 'Provided' : 'NONE'}`);
     if (!userId) return;
     try {
-        const data = await api.getScreenshotCount(userId);
+        const data = await api.getScreenshotCount(userId, signal);
         const countEl = document.getElementById('detailScreenshots');
         if (countEl) countEl.textContent = data.count;
     } catch (err) {
-        console.error("Failed to load screenshot count:", err);
+        if (err.name !== 'AbortError') {
+            console.error("Failed to load screenshot count:", err);
+        }
     }
 }
 
@@ -596,18 +624,18 @@ async function triggerCommand(commandType) {
 
 async function pollForCommandResult(commandId, type, userId) {
     let attempts = 0;
-    const maxAttempts = 15; // 30 seconds
+    const maxAttempts = 12; // 60 seconds total (12 attempts * 5s)
 
     if (commandPollInterval) clearInterval(commandPollInterval);
 
     commandPollInterval = setInterval(async () => {
         attempts++;
         const titleEl = document.getElementById('liveFeedTitle');
+        
         if (attempts > maxAttempts) {
             clearInterval(commandPollInterval);
             log(`Timeout waiting for ${type} result.`, 'warning');
             updateLiveFeed('reset');
-            // Update title to show timeout
             if (titleEl) titleEl.textContent = `${type} Request Timed Out`;
             return;
         }
@@ -674,7 +702,7 @@ async function pollForCommandResult(commandId, type, userId) {
             console.log("Polling error:", e);
         }
 
-    }, 2000);
+    }, 5000); // Increased to 5s to allow client capture/upload cycle
 }
 
 // ------ Modals & Helpers ------
@@ -797,7 +825,8 @@ function toggleNavDrawer() {
 
 // ------ Latest Screenshot Functions ------
 
-async function loadLatestScreenshot(userId, forceRefresh = false) {
+async function loadLatestScreenshot(userId, forceRefresh = false, signal = null) {
+    console.log(`[loadLatestScreenshot] Loading for user ${userId}. forceRefresh: ${forceRefresh}, Signal: ${signal ? 'Provided' : 'NONE'}`);
     if (!userId) return;
 
     // Guard: Don't override if user is looking at Apps or Browser, unless forced (e.g. user selection)
@@ -806,7 +835,7 @@ async function loadLatestScreenshot(userId, forceRefresh = false) {
     }
 
     try {
-        const data = await api.getLatestScreenshot(userId);
+        const data = await api.getLatestScreenshot(userId, signal);
 
         // Prefer base64 image_data if available
         let imageUrl;
@@ -823,6 +852,8 @@ async function loadLatestScreenshot(userId, forceRefresh = false) {
         log('Latest screenshot loaded', 'success');
 
     } catch (err) {
+        if (err.name === 'AbortError') return;
+        
         // No screenshot available - this is normal for new users
         console.log('No screenshot available:', err.message);
         // Keep the placeholder visible

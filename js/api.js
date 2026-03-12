@@ -49,7 +49,7 @@ class APIClient {
         };
     }
 
-    async request(endpoint, method = 'GET', body = null) {
+    async request(endpoint, method = 'GET', body = null, signal = null) {
         const headers = {
             'Content-Type': 'application/json',
             'ngrok-skip-browser-warning': 'true' // Bypass ngrok warning page
@@ -62,7 +62,8 @@ class APIClient {
 
         const config = {
             method,
-            headers
+            headers,
+            signal
         };
 
         if (body) {
@@ -148,7 +149,7 @@ class APIClient {
 
         const data = await response.json();
         let clients = Array.isArray(data) ? data : (data.clients || data.data || []);
-        
+
         return clients.map(c => {
             let name = c.name;
             if (!name && c.orgn_details && c.orgn_details[0]) {
@@ -174,12 +175,12 @@ class APIClient {
         return true;
     }
 
-    async getOnlineUsers() {
-        return this.request('/admin/online-users');
+    async getOnlineUsers(signal = null) {
+        return this.request('/admin/online-users', 'GET', null, signal);
     }
 
-    async getAllUsers() {
-        return this.request('/admin/users');
+    async getAllUsers(signal = null) {
+        return this.request('/admin/users', 'GET', null, signal);
     }
 
     async sendCommand(userId, commandType) {
@@ -220,12 +221,12 @@ class APIClient {
         return this.request(`/admin/commands?user_id=${userId}`);
     }
 
-    async getLatestScreenshot(userId) {
-        return this.request(`/admin/screenshot/latest/${userId}`);
+    async getLatestScreenshot(userId, signal = null) {
+        return this.request(`/admin/screenshot/latest/${userId}`, 'GET', null, signal);
     }
 
-    async getScreenshotCount(userId) {
-        return this.request(`/admin/screenshot-count/${userId}`);
+    async getScreenshotCount(userId, signal = null) {
+        return this.request(`/admin/screenshot-count/${userId}`, 'GET', null, signal);
     }
 
     async startLiveStream(userId) {
