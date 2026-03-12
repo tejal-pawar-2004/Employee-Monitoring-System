@@ -3,6 +3,7 @@ window.api = api;
 let currentUserId = null;
 let commandPollInterval = null;
 let selectionAbortController = null;
+let isProcessingSelection = false;
 let currentBrowserData = null; // Added for browser drill-down
 let allUsersData = [];
 let onlineUsersData = [];
@@ -241,11 +242,13 @@ function renderUserList(allUsers, onlineUsers, filterText = '') {
 }
 
 async function selectUser(user, isOnline) {
-    console.log(`[selectUser] Triggered for user ${user.id} (${user.name}). isOnline: ${isOnline}`);
-    if (currentUserId === user.id && window.currentLiveFeedMode !== 'reset') {
-        console.log("[selectUser] User already selected, skipping full reset");
-        return;
+    if (isProcessingSelection) {
+        console.log("[selectUser] Selection already in progress, aborting previous and starting new...");
+        if (selectionAbortController) selectionAbortController.abort();
     }
+    
+    isProcessingSelection = true;
+    console.log(`[selectUser] Triggered for user ${user.id} (${user.name}). isOnline: ${isOnline}`);
 
     currentUserId = user.id;
 
@@ -322,11 +325,12 @@ async function selectUser(user, isOnline) {
         } else {
             console.error("Failed to load user data:", err);
         }
+    } finally {
+        isProcessingSelection = false;
     }
 }
 
 async function loadScreenshotCount(userId, signal = null) {
-    console.log(`[loadScreenshotCount] Loading for user ${userId}. Signal: ${signal ? 'Provided' : 'NONE'}`);
     if (!userId) return;
     try {
         const data = await api.getScreenshotCount(userId, signal);
@@ -697,12 +701,21 @@ async function pollForCommandResult(commandId, type, userId) {
                 }
             }
         } catch (e) {
-            // Ignore errors while polling, but log fatal ones
-            if (attempts % 5 === 0) log(`Polling error: ${e.message}`, 'warning');
-            console.log("Polling error:", e);
+            // Stop polling instantly on 500 Internal Server Error (fatal)
+            if (e.message && (e.message.includes('500') || e.message.includes('Internal Server Error'))) {
+                clearInterval(commandPollInterval);
+                log(`Fatal server error: ${e.message}`, 'error');
+                updateLiveFeed('reset');
+                if (titleEl) titleEl.textContent = "Server Error (Capture Failed)";
+                return;
+            }
+
+            // Other errors (404, network): retry unless we hit maxAttempts
+            if (attempts % 5 === 0) log(`Polling...`, 'warning');
+            console.log("Polling error (might be waiting for upload):", e);
         }
 
-    }, 5000); // Increased to 5s to allow client capture/upload cycle
+    }, 5000); // 5s interval for capture/upload cycle
 }
 
 // ------ Modals & Helpers ------
@@ -826,7 +839,6 @@ function toggleNavDrawer() {
 // ------ Latest Screenshot Functions ------
 
 async function loadLatestScreenshot(userId, forceRefresh = false, signal = null) {
-    console.log(`[loadLatestScreenshot] Loading for user ${userId}. forceRefresh: ${forceRefresh}, Signal: ${signal ? 'Provided' : 'NONE'}`);
     if (!userId) return;
 
     // Guard: Don't override if user is looking at Apps or Browser, unless forced (e.g. user selection)
