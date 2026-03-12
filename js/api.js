@@ -92,7 +92,11 @@ class APIClient {
             }
 
             if (!response.ok) {
-                const errorMessage = typeof data.detail === 'object' ? JSON.stringify(data.detail) : (data.detail || 'Request failed');
+                let errorMessage = typeof data.detail === 'object' ? JSON.stringify(data.detail) : (data.detail || 'Request failed');
+                // Capture server-side exception if available (from global_exception_handler)
+                if (data.error) {
+                    errorMessage += ` | Server Error: ${data.error}`;
+                }
                 throw new Error(errorMessage);
             }
 
