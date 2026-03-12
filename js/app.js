@@ -125,6 +125,9 @@ async function loadDashboard() {
         allUsersData = allUsers;
         onlineUsersData = onlineData.users;
 
+        console.log("DEBUG_DASHBOARD: All Users", allUsers);
+        console.log("DEBUG_DASHBOARD: Online Users", onlineData.users);
+
         const searchInput = document.getElementById('employeeSearchInput');
         const filterText = searchInput ? searchInput.value : '';
 
@@ -181,7 +184,7 @@ function updateStats(onlineCount, totalCount) {
 
 function renderUserList(allUsers, onlineUsers, filterText = '') {
     const listContainer = document.getElementById('usersList');
-    const onlineIds = new Set(onlineUsers.map(u => u.user_id));
+    const onlineIds = new Set(onlineUsers.map(u => String(u.user_id)));
 
     listContainer.innerHTML = '';
 
@@ -200,23 +203,34 @@ function renderUserList(allUsers, onlineUsers, filterText = '') {
     }
 
     filteredUsers.forEach(user => {
-        const isOnline = onlineIds.has(user.id);
+        const isOnline = onlineIds.has(String(user.id));
         const el = document.createElement('div');
+        
+        // Robust name detection
+        const rawName = user.name || user.full_name || 
+                        (user.first_name ? `${user.first_name} ${user.last_name || ''}` : '');
+        
+        const isPlaceholder = !rawName || rawName === 'Unknown User' || rawName === 'None' || rawName.trim() === '';
+        const displayName = isPlaceholder ? (user.email || 'Employee ' + user.id.substring(0, 4)) : rawName;
+
+        if (isPlaceholder) {
+            console.warn(`DEBUG_DASHBOARD: User ${user.id} has no valid name, using fallback: ${displayName}`, user);
+        }
+
         // Match Sidebar styling
-        // High contrast light theme sidebar items
         el.className = `px-4 py-3 cursor-pointer text-sm flex items-center justify-between group transition-colors duration-200 ${currentUserId === user.id ? 'bg-blue-50 border-l-4 border-blue-600' : 'hover:bg-gray-50 border-l-4 border-transparent'}`;
-        el.onclick = () => selectUser(user, isOnline);
+        el.onclick = () => selectUser({ ...user, name: displayName }, isOnline);
 
         el.innerHTML = `
             <div class="flex items-center w-full">
                 <div class="relative mr-3">
                     <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-700 border border-gray-200">
-                        ${(user.name || 'U').charAt(0).toUpperCase()}
+                        ${displayName.charAt(0).toUpperCase()}
                     </div>
                     <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${isOnline ? 'bg-green-500' : 'bg-gray-300'}"></div>
                 </div>
                 <div class="min-w-0 flex-1">
-                    <h4 class="font-bold text-gray-900 underline-offset-2 decoration-blue-500/30 group-hover:text-blue-600 transition truncate">${user.name}</h4>
+                    <h4 class="font-bold text-gray-900 underline-offset-2 decoration-blue-500/30 group-hover:text-blue-600 transition truncate">${displayName}</h4>
                     <p class="text-xs text-gray-500 truncate font-medium">${user.email}</p>
                 </div>
                 <i class="fas fa-chevron-right text-xs text-slate-600 group-hover:text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"></i>

@@ -85,52 +85,61 @@
 
         <div class="glass p-8 rounded-[2rem] shadow-2xl">
             <form id="loginForm" class="space-y-6">
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-2 ml-1 uppercase tracking-wider">Select
-                        Organization</label>
-                    <div class="relative group">
-                        <i
-                            class="fas fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors"></i>
-                        <select id="organization"
-                            class="w-full bg-white border border-gray-200 rounded-xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none input-focus transition-all appearance-none cursor-pointer">
-                            <option value="a3ea1cda-c735-4798-8219-54bbb07795a9">The Baap Company</option>
-                            <option value="b2f1c8d9-e3a4-4b5c-8d1e-2f3a4b5c6d7e">The Baap Technology</option>
-                            <option value="c3f2d9e0-f4b5-4c6d-9e1f-3a4b5c6d7e8f">Baap Networks</option>
-                            <option value="d4e3f0a1-a5b6-4d7e-af20-4b5c6d7e8f9a">Baap Solutions</option>
-                        </select>
-                        <i
-                            class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                <!-- Step 1: Credentials -->
+                <div id="credentialsStep" class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2 ml-1 uppercase tracking-wider">Email Address</label>
+                        <div class="relative group">
+                            <i class="fas fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors"></i>
+                            <input type="email" id="email"
+                                class="w-full bg-white border border-gray-200 rounded-xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none input-focus transition-all placeholder-gray-400"
+                                placeholder="name@company.com" required>
+                        </div>
                     </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2 ml-1 uppercase tracking-wider">Password</label>
+                        <div class="relative group">
+                            <i class="fas fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-purple-500 transition-colors"></i>
+                            <input type="password" id="password"
+                                class="w-full bg-white border border-gray-200 rounded-xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none input-focus transition-all placeholder-gray-400"
+                                placeholder="••••••••" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="submitBtn"
+                        class="w-full btn-gradient py-4 rounded-xl text-white font-bold text-lg shadow-xl shadow-blue-500/10 active:scale-[0.98]">
+                        Next
+                    </button>
                 </div>
 
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-2 ml-1 uppercase tracking-wider">Email
-                        Address</label>
-                    <div class="relative group">
-                        <i
-                            class="fas fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors"></i>
-                        <input type="email" id="email"
-                            class="w-full bg-white border border-gray-200 rounded-xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none input-focus transition-all placeholder-gray-400"
-                            placeholder="name@company.com" required>
+                <!-- Step 2: Organization Selection (Hidden initially) -->
+                <div id="orgStep" class="hidden space-y-6">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2 ml-1 uppercase tracking-wider">Search Organization</label>
+                        <div class="relative group">
+                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors"></i>
+                            <input type="text" id="orgSearch"
+                                class="w-full bg-white border border-gray-200 rounded-xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none input-focus transition-all placeholder-gray-400"
+                                placeholder="Type to search...">
+                        </div>
+                        
+                        <!-- Search Results Dropdown -->
+                        <div id="orgResults" class="mt-2 max-h-48 overflow-y-auto bg-white border border-gray-100 rounded-xl shadow-lg hidden">
+                            <!-- Results populated by JS -->
+                        </div>
+                        <input type="hidden" id="selectedOrgId">
                     </div>
-                </div>
 
-                <div>
-                    <label
-                        class="block text-sm font-bold text-gray-700 mb-2 ml-1 uppercase tracking-wider">Password</label>
-                    <div class="relative group">
-                        <i
-                            class="fas fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-purple-500 transition-colors"></i>
-                        <input type="password" id="password"
-                            class="w-full bg-white border border-gray-200 rounded-xl py-4 pl-12 pr-4 text-gray-900 focus:outline-none input-focus transition-all placeholder-gray-400"
-                            placeholder="••••••••" required>
-                    </div>
+                    <button type="button" id="loginBtn" disabled
+                        class="w-full bg-gray-300 py-4 rounded-xl text-white font-bold text-lg cursor-not-allowed transition-all">
+                        Complete Sign In
+                    </button>
+                    
+                    <button type="button" onclick="resetLogin()" class="w-full text-sm text-gray-500 font-medium hover:text-blue-500 transition-colors">
+                        <i class="fas fa-arrow-left mr-1"></i> Use different account
+                    </button>
                 </div>
-
-                <button type="submit" id="submitBtn"
-                    class="w-full btn-gradient py-4 rounded-xl text-white font-bold text-lg shadow-xl shadow-blue-500/10 active:scale-[0.98]">
-                    Secure Sign In
-                </button>
             </form>
 
             <div id="errorContainer"
@@ -149,37 +158,133 @@
 
     <script src="js/api.js"></script>
     <script>
-        // Instantiate the API client
         window.api = new APIClient();
+        let allOrganizations = [];
+        let currentToken = null;
 
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        const loginForm = document.getElementById('loginForm');
+        const credentialsStep = document.getElementById('credentialsStep');
+        const orgStep = document.getElementById('orgStep');
+        const orgSearch = document.getElementById('orgSearch');
+        const orgResults = document.getElementById('orgResults');
+        const submitBtn = document.getElementById('submitBtn');
+        const loginBtn = document.getElementById('loginBtn');
+        const errorContainer = document.getElementById('errorContainer');
+        const errorMsg = document.getElementById('errorMsg');
+
+        // Step 1: Initial Authentication
+        loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const organizationId = document.getElementById('organization').value;
+            if (!credentialsStep.classList.contains('hidden')) {
+                await handleInitialAuth();
+            }
+        });
+
+        async function handleInitialAuth() {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
-            const errorContainer = document.getElementById('errorContainer');
-            const errorMsg = document.getElementById('errorMsg');
-            const btn = document.getElementById('submitBtn');
-            const originalBtnText = btn.innerHTML;
-
-            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> Authenticating...';
-            btn.disabled = true;
+            
+            submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> Identifying...';
+            submitBtn.disabled = true;
             errorContainer.classList.add('hidden');
 
             try {
-                // Use the centralized APIClient (window.api) which now handles 
-                // external authentication and SuperAdmin role validation.
-                const success = await window.api.login(email, password, organizationId);
-                if (success) {
-                    window.location.href = 'index.html';
+                const authData = await window.api.getAuthToken(email, password);
+                currentToken = authData.token;
+                
+                // Fetch Organizations
+                allOrganizations = await window.api.getAvailableOrganizations(currentToken);
+                
+                if (allOrganizations.length === 0) {
+                    throw new Error("No organizations associated with this account.");
+                }
+
+                if (allOrganizations.length === 1) {
+                    // Auto-select and proceed
+                    selectOrganization(allOrganizations[0].id, allOrganizations[0].name);
+                    await finalizeLogin();
+                } else {
+                    // Show selection step
+                    credentialsStep.classList.add('hidden');
+                    orgStep.classList.remove('hidden');
+                    renderResults(allOrganizations);
                 }
             } catch (err) {
-                errorMsg.textContent = err.message || "Connection failed";
-                errorContainer.classList.remove('hidden');
-                btn.innerHTML = originalBtnText;
-                btn.disabled = false;
+                showError(err.message || "Authentication failed");
+                submitBtn.innerHTML = 'Next';
+                submitBtn.disabled = false;
             }
+        }
+
+        // Step 2: Search & Filter
+        orgSearch.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            const filtered = allOrganizations.filter(org => 
+                org.name.toLowerCase().includes(query)
+            );
+            renderResults(filtered);
         });
+
+        function renderResults(orgs) {
+            orgResults.innerHTML = '';
+            if (orgs.length === 0) {
+                orgResults.innerHTML = '<div class="p-4 text-gray-500 text-sm">No organizations found</div>';
+            } else {
+                orgs.forEach(org => {
+                    const div = document.createElement('div');
+                    div.className = 'p-4 hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0';
+                    div.innerHTML = `<span class="font-medium">${org.name}</span>`;
+                    div.onclick = () => selectOrganization(org.id, org.name);
+                    orgResults.appendChild(div);
+                });
+            }
+            orgResults.classList.remove('hidden');
+        }
+
+        function selectOrganization(id, name) {
+            document.getElementById('selectedOrgId').value = id;
+            orgSearch.value = name;
+            orgResults.classList.add('hidden');
+            loginBtn.disabled = false;
+            loginBtn.classList.remove('bg-gray-300', 'cursor-not-allowed');
+            loginBtn.classList.add('btn-gradient');
+        }
+
+        loginBtn.addEventListener('click', finalizeLogin);
+
+        async function finalizeLogin() {
+            const orgId = document.getElementById('selectedOrgId').value;
+            const originalText = loginBtn.innerHTML;
+            loginBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> Signing In...';
+            loginBtn.disabled = true;
+
+            try {
+                // Since we already have the token in localStorage from getAuthToken logic? 
+                // Wait, APIClient.login sets localStorage.
+                // In our multi-step, getAuthToken doesn't set it yet to prevent half-logged sessions.
+                // Let's ensure it's set.
+                localStorage.setItem('access_token', currentToken);
+                window.location.href = 'index.html';
+            } catch (err) {
+                showError(err.message || "Finalization failed");
+                loginBtn.innerHTML = originalText;
+                loginBtn.disabled = false;
+            }
+        }
+
+        function resetLogin() {
+            orgStep.classList.add('hidden');
+            credentialsStep.classList.remove('hidden');
+            submitBtn.innerHTML = 'Next';
+            submitBtn.disabled = false;
+            errorContainer.classList.add('hidden');
+            currentToken = null;
+        }
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorContainer.classList.remove('hidden');
+        }
     </script>
 </body>
 

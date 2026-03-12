@@ -1,7 +1,6 @@
 class APIClient {
     constructor() {
         // this.baseUrl = "http://localhost:8000/api/v1";
-        // this.baseUrl = "https://empmonitoring.duckdns.org/api/v1";
         this.baseUrl = "https://boardviewai.duckdns.org/api/v1";
         // this.baseUrl = "http://emp-monitoring.duckdns.org/api/v1";
         // this.baseUrl = "https://nonobstetrically-nonoptical-raymundo.ngrok-free.dev/api/v1";
@@ -115,17 +114,11 @@ class APIClient {
         }
     }
 
-    async login(email, password, clientId = null) {
+    async getAuthToken(email, password) {
         const authUrl = "https://platform-development-dev.157.20.214.214.nip.io/auth/api/auth/login";
-
-        console.log(`Attempting login for ${email} in organization: ${clientId || 'None'}`);
-
         const response = await fetch(authUrl, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ email, password })
         });
 
@@ -135,12 +128,48 @@ class APIClient {
         }
 
         const data = await response.json();
-        const token = data.access_token || data.token;
+        return {
+            token: data.access_token || data.token,
+            user_info: data.user || {}
+        };
+    }
+
+    async getAvailableOrganizations(token) {
+        const clientsUrl = "https://platform-development-dev.157.20.214.214.nip.io/auth/api/clients";
+        const response = await fetch(clientsUrl, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!response.ok) throw new Error("Failed to fetch organizations");
+
+        const data = await response.json();
+        let clients = Array.isArray(data) ? data : (data.clients || data.data || []);
+        
+        return clients.map(c => {
+            let name = c.name;
+            if (!name && c.orgn_details && c.orgn_details[0]) {
+                name = c.orgn_details[0].orgn_name;
+            }
+            return {
+                id: c.id || c.uuid,
+                name: name || 'Unknown Organization'
+            };
+        });
+    }
+
+    async login(email, password, clientId = null) {
+        const authData = await this.getAuthToken(email, password);
+        const token = authData.token;
 
         if (!token) throw new Error("Invalid response from auth server");
 
         localStorage.setItem('access_token', token);
-        localStorage.setItem('admin_name', data.user ? (data.user.first_name + " " + data.user.last_name) : 'Administrator');
+        const user = authData.user_info;
+        localStorage.setItem('admin_name', user.first_name ? (user.first_name + " " + (user.last_name || "")) : 'Administrator');
         this.token = token;
         return true;
     }
