@@ -11,13 +11,15 @@ class LiveStreamManager {
         this.reconnectInterval = null;
         this.isManuallyStopped = false;
 
+
         // NEW: Toggle State
         this.isStreaming = false;
         // Cache button elements (assuming class .for-live-stream is unique/stable as per instructions)
         this.streamBtn = document.querySelector('.for-live-stream');
-        // We'll update innerText, so no need to cache the span specifically unless we want to preserve icon 
+        // We'll update innerText, so no need to cache the span specifically unless we want to preserve icon
         // The button has: <i ...></i> <span>Start Live Stream</span>
     }
+
 
     start(userId) {
         // TOGGLE LOGIC
@@ -27,19 +29,23 @@ class LiveStreamManager {
             return;
         }
 
+
         // If streaming a DIFFERENT user, we stop previous and start new (Switching users)
         if (this.isStreaming && this.activeUserId !== userId) {
             this.stop();
             // Fall through to start new
         }
 
+
         // START NEW STREAM
         this.activeUserId = userId;
         this.isManuallyStopped = false;
         this.isStreaming = true;
 
+
         // Update Button UI
         this._updateButtonState(true);
+
 
         // Show the spinner immediately upon initialization using the global UI updater
         if (typeof updateLiveFeed === 'function') {
@@ -48,6 +54,7 @@ class LiveStreamManager {
             this.loadingEl.classList.remove('hidden');
             this.loadingEl.style.display = 'flex';
         }
+
 
         // Notify backend to signal client
         if (window.api) {
@@ -61,11 +68,14 @@ class LiveStreamManager {
             });
         }
 
+
         this._connect();
     }
 
+
     _connect() {
         if (!this.activeUserId || this.isManuallyStopped) return;
+
 
         // ALWAYS show loading state immediately
         if (typeof updateLiveFeed === 'function') {
@@ -75,15 +85,19 @@ class LiveStreamManager {
             this.loadingEl.style.display = 'flex';
         }
 
+
         if (this.titleEl) this.titleEl.textContent = 'Connecting to Live Stream...';
+
 
         let protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         let host = 'localhost:8000';
+
 
         // Check if we are on localhost and force ws:
         if (host.includes('localhost') || host.includes('127.0.0.1')) {
             protocol = 'ws:';
         }
+
 
         // Try to get host from the main API client if it exists
         if (window.api && window.api.baseUrl) {
@@ -100,14 +114,18 @@ class LiveStreamManager {
             protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         }
 
-        // THE PURPOSE: Connect to the new WebRTC signaling endpoint to exchange connection details with the desktop agent.
-        // THE REPLACEMENT: Replaced the old WebSocket connection to `/admin/{userId}` that used to receive continuous base64 images from the server.
+
+        // FIX: Ensure the path matches the backend router exactly: /api/v1/ws/ws
+        // If host is localhost:8000, then ws://localhost:8000/api/v1/ws/ws
         const token = localStorage.getItem('access_token');
         const wsUrl = `${protocol}//${host}/api/v1/ws/ws?role=viewer&room_id=${this.activeUserId}&token=${token}`;
 
+
         if (window.api) window.api.debugLog(`Attempting WS to: ${wsUrl}`);
 
+
         console.log(`Connecting signaling websocket to: ${wsUrl}`);
+
 
         try {
             this.ws = new WebSocket(wsUrl);
@@ -116,6 +134,7 @@ class LiveStreamManager {
         } catch (e) {
             if (window.api) window.api.debugLog(`WS constructor error: ${e.message}`);
         }
+
 
         this.ws.onopen = async () => {
             if (window.api) window.api.debugLog(`Signaling WS Opened for ${this.activeUserId}`);
@@ -137,9 +156,11 @@ class LiveStreamManager {
             this.videoEl.classList.remove('hidden');
             window.currentLiveFeedMode = 'live';
 
+
             if (this.titleEl) {
                 this.titleEl.innerHTML = '<i class="fas fa-video text-emerald-500 mr-2 animate-pulse"></i> LIVE STREAMING (P2P)';
             }
+
 
             // THE PURPOSE: Create the built-in browser engine for peer-to-peer video streaming (WebRTC). It uses STUN/TURN servers to find the best direct path to the desktop agent.
             // THE REPLACEMENT: Completely replaces the old method of assigning base64 strings to an image element's `.src` property. This provides native video playback and is much smoother.
@@ -153,11 +174,16 @@ class LiveStreamManager {
                 ]
             };
 
+
             this.pc = new RTCPeerConnection(configuration);
+            console.log("RTCPeerConnection initialized with configuration:", configuration);
+
 
             // Handle incoming tracks (video stream)
             this.pc.ontrack = (event) => {
-                console.log("Received remote track:", event.streams[0]);
+                console.log("SUCCESS: Received remote video track:", event.streams[0]);
+                if (window.api) window.api.debugLog("Received remote track from WebRTC");
+
 
                 const attemptPlay = () => {
                     const vid = document.getElementById('feedVideo') || this.videoEl;
@@ -177,17 +203,20 @@ class LiveStreamManager {
                 };
                 attemptPlay();
 
+
                 // Fallback: hide immediately when track arrives, just in case DOM events fail
                 if (this.loadingEl) {
                     this.loadingEl.classList.add('hidden');
                     this.loadingEl.style.display = 'none';
                 }
 
+
                 if (!this.isStreaming) {
                     this.isStreaming = true;
                     this._updateButtonState(true);
                 }
             };
+
 
             // Network Gathering: Trickle ICE Candidate
             this.pc.onicecandidate = (event) => {
@@ -201,14 +230,20 @@ class LiveStreamManager {
                 }
             };
 
+
             this.pc.onconnectionstatechange = () => {
-                console.log("WebRTC Connection State:", this.pc.connectionState);
+                console.log("WebRTC Connection State Change:", this.pc.connectionState);
+                if (window.api) window.api.debugLog(`WebRTC State: ${this.pc.connectionState}`);
+
                 if (this.pc.connectionState === 'disconnected' || this.pc.connectionState === 'failed') {
                     const errorMsg = this.pc.connectionState === 'failed' ? 'Connection Failed: Firewall Blocked' : 'Stream Disconnected.';
                     if (this.titleEl) this.titleEl.textContent = errorMsg;
                     console.error("WebRTC Critical State:", this.pc.connectionState);
+                } else if (this.pc.connectionState === 'connected') {
+                    console.log("WebRTC Connection established successfully!");
                 }
             };
+
 
             this.pc.oniceconnectionstatechange = () => {
                 console.log("ICE Connection State:", this.pc.iceConnectionState);
@@ -233,10 +268,12 @@ class LiveStreamManager {
                 }
             };
 
+
             // The Viewer (Admin) is the initiator: Create Offer
-            // We must add a transceiver to signal we want to receive video, 
+            // We must add a transceiver to signal we want to receive video,
             // since we are just receiving and not sending tracks initially.
             this.pc.addTransceiver('video', { direction: 'recvonly' });
+
 
             try {
                 const offer = await this.pc.createOffer();
@@ -251,9 +288,11 @@ class LiveStreamManager {
             }
         };
 
+
         this.ws.onmessage = async (event) => {
             try {
                 const message = JSON.parse(event.data);
+
 
                 if (message.type === 'answer') {
                     console.log("Received WebRTC Answer");
@@ -270,16 +309,19 @@ class LiveStreamManager {
             }
         };
 
+
         this.ws.onerror = (error) => {
             if (window.api) window.api.debugLog(`WS Error occurred`);
             console.error("Signaling WebSocket Error:", error);
             // Close will trigger onclose
         };
 
+
         this.ws.onclose = (event) => {
             if (window.api) window.api.debugLog(`WS Closed. Code: ${event.code}, Reason: ${event.reason}`);
             console.log("Signaling WebSocket Closed");
             window.currentLiveFeedMode = 'reset';
+
 
             // If it was NOT manually stopped, it's an unexpected closure (or error)
             if (!this.isManuallyStopped) {
@@ -290,12 +332,15 @@ class LiveStreamManager {
         };
     }
 
+
     stop() {
         this.isManuallyStopped = true;
         this.isStreaming = false;
         window.currentLiveFeedMode = 'reset';
 
+
         this._updateButtonState(false);
+
 
         // Notify backend to signal client
         if (window.api && this.activeUserId) {
@@ -304,22 +349,27 @@ class LiveStreamManager {
             });
         }
 
+
         if (this.reconnectInterval) {
             clearTimeout(this.reconnectInterval);
             this.reconnectInterval = null;
         }
+
 
         if (this.ws) {
             this.ws.close();
             this.ws = null;
         }
 
+
         if (this.pc) {
             this.pc.close();
             this.pc = null;
         }
 
+
         this.activeUserId = null;
+
 
         // UI Reset
         if (this.imageEl && this.imageEl.src.startsWith('blob:')) {
@@ -331,6 +381,7 @@ class LiveStreamManager {
             this.videoEl.style.display = 'none';
         }
 
+
         this.imageEl.style.display = 'none';
         this.placeholderEl.style.display = 'block';
         if (this.loadingEl) {
@@ -340,15 +391,18 @@ class LiveStreamManager {
         if (this.titleEl) this.titleEl.textContent = 'Live Feed';
     }
 
+
     _updateButtonState(isStreaming) {
         // Re-query in case DOM changed
         if (!this.streamBtn) this.streamBtn = document.querySelector('.for-live-stream');
         if (!this.streamBtn) return;
 
+
         const icon = this.streamBtn.querySelector('i');
         // Search for the span that is NOT empty (contains the text)
         const textNodes = Array.from(this.streamBtn.querySelectorAll('span')).filter(s => s.innerText.trim() !== '');
         const text = textNodes[textNodes.length - 1]; // Assume the last one is the primary text
+
 
         if (isStreaming) {
             if (text) text.innerText = 'Stop Live Stream';
@@ -363,5 +417,6 @@ class LiveStreamManager {
         }
     }
 }
+
 
 window.liveStreamManager = new LiveStreamManager();
