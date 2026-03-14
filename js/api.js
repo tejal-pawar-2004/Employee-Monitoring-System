@@ -23,7 +23,8 @@ class APIClient {
             host = url.host;
         } catch (e) { }
 
-        const wsUrl = `${protocol}//${host}/api/v1/ws/events?token=${this.token}`;
+        const token = encodeURIComponent(this.token);
+        const wsUrl = `${protocol}//${host}/api/v1/ws/events?token=${token}`;
         console.log("Connecting to Admin Events:", wsUrl);
 
         const ws = new WebSocket(wsUrl);
