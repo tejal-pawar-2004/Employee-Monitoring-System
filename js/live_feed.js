@@ -105,24 +105,42 @@ class LiveStreamManager {
             this._initializePeerConnection();
         };
 
+        this.candidateQueue = [];
+        this.isRemoteDescriptionSet = false;
+
         this.ws.onmessage = async (event) => {
             try {
                 const message = JSON.parse(event.data);
                 if (message.type === 'rtc_config') {
                     console.log("Received RTC Configuration from server");
                     this.rtcConfig = message.iceServers;
-                    // If we haven't initialized PC yet, _onopen will do it. 
-                    // If we did, we might want to update it if fallback hasn't happened.
                 } else if (message.type === 'answer') {
                     console.log("Received WebRTC Answer");
-                    if (this.pc) await this.pc.setRemoteDescription(new RTCSessionDescription(message));
+                    if (this.pc) {
+                        await this.pc.setRemoteDescription(new RTCSessionDescription(message));
+                        this.isRemoteDescriptionSet = true;
+                        
+                        // Process queued candidates
+                        while (this.candidateQueue.length > 0) {
+                            const cand = this.candidateQueue.shift();
+                            console.log("Processing queued ICE candidate");
+                            await this.pc.addIceCandidate(new RTCIceCandidate(cand));
+                        }
+                    }
                 } else if (message.type === 'ice_candidate') {
                     if (this.pc) {
-                        await this.pc.addIceCandidate(new RTCIceCandidate({
+                        const candData = {
                             candidate: message.candidate,
                             sdpMid: message.sdpMid,
                             sdpMLineIndex: message.sdpMLineIndex
-                        }));
+                        };
+                        
+                        if (this.isRemoteDescriptionSet) {
+                            await this.pc.addIceCandidate(new RTCIceCandidate(candData));
+                        } else {
+                            console.log("Queuing ICE candidate (remote description not set)");
+                            this.candidateQueue.push(candData);
+                        }
                     }
                 }
             } catch (err) {
@@ -218,6 +236,8 @@ class LiveStreamManager {
         }
 
         this.pc = new RTCPeerConnection(configuration);
+        this.candidateQueue = [];
+        this.isRemoteDescriptionSet = false;
         console.log("RTCPeerConnection initialized. Mode:", this.useTurnFallback ? "TURN Fallback" : "STUN Only");
 
         this._setupPeerConnectionHandlers();
