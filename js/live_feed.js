@@ -244,11 +244,19 @@ class LiveStreamManager {
             if (vid) {
                 vid.srcObject = event.streams[0];
                 vid.play().catch(e => console.warn("play() failed:", e));
-                this.imageEl.style.display = 'none';
-                this.videoEl.style.display = 'block';
+                
+                // Hide other content and show video
+                if (typeof updateLiveFeed === 'function') {
+                    // This will reset others but might hide video, so we handle video next
+                    updateLiveFeed('live_active'); 
+                }
+                
+                this.imageEl.classList.add('hidden');
+                
+                vid.classList.remove('hidden');
+                
                 if (this.loadingEl) {
                     this.loadingEl.classList.add('hidden');
-                    this.loadingEl.style.display = 'none';
                 }
             }
         };
@@ -266,23 +274,29 @@ class LiveStreamManager {
 
         this.pc.onconnectionstatechange = () => {
             console.log("WebRTC Connection State Change:", this.pc.connectionState);
-            if (this.pc.connectionState === 'failed') {
-                if (!this.useTurnFallback) {
-                    console.log("Triggering immediate TURN fallback due to failure.");
-                    this._triggerFallback();
-                } else {
-                    if (this.titleEl) this.titleEl.textContent = 'Connection Blocked by Firewall.';
-                }
-            } else if (this.pc.connectionState === 'connected') {
+            if (this.pc.connectionState === 'connected') {
                 if (this.fallbackTimeout) {
                     clearTimeout(this.fallbackTimeout);
                     this.fallbackTimeout = null;
+                }
+                if (this.titleEl) {
+                    this.titleEl.innerHTML = this.useTurnFallback 
+                        ? '<i class="fas fa-video text-yellow-500 mr-2 animate-pulse"></i> LIVE STREAMING (RELAY)'
+                        : '<i class="fas fa-video text-emerald-500 mr-2 animate-pulse"></i> LIVE STREAMING (P2P)';
+                }
+            } else if (this.pc.connectionState === 'failed' || this.pc.connectionState === 'closed') {
+                if (!this.useTurnFallback && this.pc.connectionState === 'failed') {
+                    console.warn("WebRTC connection failed. Triggering fallback.");
+                    this._triggerFallback();
+                } else if (this.pc.connectionState === 'failed') {
+                    if (this.titleEl) this.titleEl.textContent = 'Connection Blocked by Firewall.';
                 }
             }
         };
 
         this.pc.oniceconnectionstatechange = () => {
             if (this.pc.iceConnectionState === 'failed' && !this.useTurnFallback) {
+                console.warn("ICE connection failed. Triggering fallback.");
                 this._triggerFallback();
             }
         };

@@ -347,12 +347,13 @@ function updateLiveFeed(type, data) {
     const container = document.getElementById('liveFeedContainer');
     const placeholder = document.getElementById('feedPlaceholder');
     const image = document.getElementById('feedImage');
+    const video = document.getElementById('feedVideo');
     const list = document.getElementById('feedList');
     const loading = document.getElementById('feedLoading');
     const titleEl = document.getElementById('liveFeedTitle');
     const expandBtn = document.getElementById('expandScreenshotBtn');
 
-    if (!container || !placeholder || !image || !list || !loading) {
+    if (!container || !placeholder || !image || !video || !list || !loading) {
         console.error("Critical elements missing for Live Feed updates");
         return;
     }
@@ -364,12 +365,11 @@ function updateLiveFeed(type, data) {
     }
 
     // Reset visibility (Hide all)
-    placeholder.style.display = 'none';
-    image.style.display = 'none';
-    list.style.display = 'none';
-    loading.style.display = 'none';
-    list.classList.add('hidden'); // Ensure Tailwind class is also handled if used elsewhere
-    loading.classList.add('hidden');
+    const elements = [placeholder, image, video, list, loading];
+    elements.forEach(el => {
+        el.style.display = 'none';
+        el.classList.add('hidden');
+    });
     if (expandBtn) expandBtn.classList.add('hidden'); // Hide expand button by default
 
     // Update current mode
@@ -385,8 +385,10 @@ function updateLiveFeed(type, data) {
         loading.style.display = 'flex';
         loading.classList.remove('hidden');
         // Keep placeholder visible behind loading if empty
-        if (!image.src || image.src.endsWith('#') || image.style.display === 'none') {
+        if ((!image.src || image.src.endsWith('#') || image.classList.contains('hidden')) && 
+            video.classList.contains('hidden')) {
             placeholder.style.display = 'block';
+            placeholder.classList.remove('hidden');
         }
         return;
     }
