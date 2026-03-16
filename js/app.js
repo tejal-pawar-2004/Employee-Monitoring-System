@@ -2,8 +2,6 @@ const api = new APIClient();
 window.api = api;
 let currentUserId = null;
 let commandPollInterval = null;
-let selectionAbortController = null;
-let isProcessingSelection = false;
 let currentBrowserData = null; // Added for browser drill-down
 let allUsersData = [];
 let onlineUsersData = [];
@@ -14,10 +12,18 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
     loadDashboard();
 
-    // Auto-refresh stats/users every 20s
+    // Auto-refresh stats/users every 10s
     setInterval(() => {
         if (document.visibilityState === 'visible') loadDashboard();
-    }, 20000);
+    }, 10000);
+
+    // Display Organization Name
+    const orgName = localStorage.getItem('client_name');
+    const orgNameHeader = document.getElementById('orgNameHeader');
+    if (orgName && orgNameHeader) {
+        orgNameHeader.textContent = orgName.toUpperCase();
+        orgNameHeader.classList.remove('hidden');
+    }
 
     document.getElementById('logoutBtn').addEventListener('click', () => api.logout());
     document.getElementById('refreshUsersBtn').addEventListener('click', loadDashboard);
@@ -127,20 +133,18 @@ async function loadDashboard() {
         allUsersData = allUsers;
         onlineUsersData = onlineData.users;
 
-        console.log("DEBUG_DASHBOARD: All Users", allUsers);
-        console.log("DEBUG_DASHBOARD: Online Users", onlineData.users);
-
         const searchInput = document.getElementById('employeeSearchInput');
         const filterText = searchInput ? searchInput.value : '';
 
         updateStats(onlineData.users.length, allUsers.length);
         renderUserList(allUsers, onlineData.users, filterText);
 
-        // If a user is currently selected, refresh their specific stats
+        // If a user is currently selected, refresh their specific details too
         if (currentUserId) {
-            // Avoid redundant calls if selectUser just started its own refresh
-            if (!selectionAbortController || selectionAbortController.signal.aborted) {
-                loadScreenshotCount(currentUserId);
+            loadScreenshotCount(currentUserId);
+            // Only auto-load screenshot if we are currently in image mode
+            if (currentLiveFeedMode === 'image' || currentLiveFeedMode === 'reset') {
+                loadLatestScreenshot(currentUserId);
             }
         }
     } catch (err) {
@@ -185,7 +189,7 @@ function updateStats(onlineCount, totalCount) {
 
 function renderUserList(allUsers, onlineUsers, filterText = '') {
     const listContainer = document.getElementById('usersList');
-    const onlineIds = new Set(onlineUsers.map(u => String(u.user_id)));
+    const onlineIds = new Set(onlineUsers.map(u => u.user_id));
 
     listContainer.innerHTML = '';
 
@@ -204,34 +208,23 @@ function renderUserList(allUsers, onlineUsers, filterText = '') {
     }
 
     filteredUsers.forEach(user => {
-        const isOnline = onlineIds.has(String(user.id));
+        const isOnline = onlineIds.has(user.id);
         const el = document.createElement('div');
-        
-        // Robust name detection
-        const rawName = user.name || user.full_name || 
-                        (user.first_name ? `${user.first_name} ${user.last_name || ''}` : '');
-        
-        const isPlaceholder = !rawName || rawName === 'Unknown User' || rawName === 'None' || rawName.trim() === '';
-        const displayName = isPlaceholder ? (user.email || 'Employee ' + user.id.substring(0, 4)) : rawName;
-
-        if (isPlaceholder) {
-            console.warn(`DEBUG_DASHBOARD: User ${user.id} has no valid name, using fallback: ${displayName}`, user);
-        }
-
         // Match Sidebar styling
+        // High contrast light theme sidebar items
         el.className = `px-4 py-3 cursor-pointer text-sm flex items-center justify-between group transition-colors duration-200 ${currentUserId === user.id ? 'bg-blue-50 border-l-4 border-blue-600' : 'hover:bg-gray-50 border-l-4 border-transparent'}`;
-        el.onclick = () => selectUser({ ...user, name: displayName }, isOnline);
+        el.onclick = () => selectUser(user, isOnline);
 
         el.innerHTML = `
             <div class="flex items-center w-full">
                 <div class="relative mr-3">
                     <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-700 border border-gray-200">
-                        ${displayName.charAt(0).toUpperCase()}
+                        ${(user.name || 'U').charAt(0).toUpperCase()}
                     </div>
                     <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${isOnline ? 'bg-green-500' : 'bg-gray-300'}"></div>
                 </div>
                 <div class="min-w-0 flex-1">
-                    <h4 class="font-bold text-gray-900 underline-offset-2 decoration-blue-500/30 group-hover:text-blue-600 transition truncate">${displayName}</h4>
+                    <h4 class="font-bold text-gray-900 underline-offset-2 decoration-blue-500/30 group-hover:text-blue-600 transition truncate">${user.name}</h4>
                     <p class="text-xs text-gray-500 truncate font-medium">${user.email}</p>
                 </div>
                 <i class="fas fa-chevron-right text-xs text-slate-600 group-hover:text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"></i>
@@ -241,23 +234,8 @@ function renderUserList(allUsers, onlineUsers, filterText = '') {
     });
 }
 
-async function selectUser(user, isOnline) {
-    if (isProcessingSelection) {
-        console.log("[selectUser] Selection already in progress, aborting previous and starting new...");
-        if (selectionAbortController) selectionAbortController.abort();
-    }
-    
-    isProcessingSelection = true;
-    console.log(`[selectUser] Triggered for user ${user.id} (${user.name}). isOnline: ${isOnline}`);
-
+function selectUser(user, isOnline) {
     currentUserId = user.id;
-
-    // Abort any pending selection requests
-    if (selectionAbortController) {
-        selectionAbortController.abort();
-    }
-    selectionAbortController = new AbortController();
-    const signal = selectionAbortController.signal;
 
     // Stop and clear any active polling from previous user
     if (commandPollInterval) {
@@ -270,11 +248,9 @@ async function selectUser(user, isOnline) {
         window.liveStreamManager.stop();
     }
 
-    // UI Updates - Immediate feedback
-    const noUserView = document.getElementById('noUserSelected');
-    const userDashboard = document.getElementById('userDashboard');
-    if (noUserView) noUserView.classList.add('hidden');
-    if (userDashboard) userDashboard.classList.remove('hidden');
+    // UI Updates
+    document.getElementById('noUserSelected').classList.add('hidden');
+    document.getElementById('userDashboard').classList.remove('hidden');
 
     // Auto-close sidebar on mobile if open
     if (window.innerWidth < 1024) {
@@ -291,7 +267,7 @@ async function selectUser(user, isOnline) {
         headerName.classList.remove('hidden');
     }
 
-    // Detail Stats - Status
+    // Detail Stats
     const statusEl = document.getElementById('detailStatus');
     if (statusEl) {
         statusEl.textContent = isOnline ? 'Online' : 'Offline';
@@ -300,46 +276,32 @@ async function selectUser(user, isOnline) {
             : 'text-2xl font-extrabold text-gray-800 mt-0.5';
     }
 
-    // Highlight active user in the sidebar without a network hit
-    const searchInput = document.getElementById('employeeSearchInput');
-    const filterText = searchInput ? searchInput.value : '';
-    renderUserList(allUsersData, onlineUsersData, filterText);
-
     // Reset Live Feed
     updateLiveFeed('reset');
+
+    // Refresh List to show active state
+    loadDashboard();
 
     // Clear logs
     clearLogs();
     log(`Selected user: ${user.name}`);
-    
-    // Load data concurrently with signal support
-    try {
-        await Promise.all([
-            loadScreenshotCount(user.id, signal),
-            loadLatestScreenshot(user.id, true, signal),
-            loadHistory(user.id)
-        ]);
-    } catch (err) {
-        if (err.name === 'AbortError') {
-            console.log("Selection request aborted for user:", user.id);
-        } else {
-            console.error("Failed to load user data:", err);
-        }
-    } finally {
-        isProcessingSelection = false;
-    }
+    loadHistory(user.id);
+
+    // Load latest screenshot automatically - this resets the view to Image
+    loadLatestScreenshot(user.id, true);
+
+    // Load screenshot count for today
+    loadScreenshotCount(user.id);
 }
 
-async function loadScreenshotCount(userId, signal = null) {
+async function loadScreenshotCount(userId) {
     if (!userId) return;
     try {
-        const data = await api.getScreenshotCount(userId, signal);
+        const data = await api.getScreenshotCount(userId);
         const countEl = document.getElementById('detailScreenshots');
         if (countEl) countEl.textContent = data.count;
     } catch (err) {
-        if (err.name !== 'AbortError') {
-            console.error("Failed to load screenshot count:", err);
-        }
+        console.error("Failed to load screenshot count:", err);
     }
 }
 
@@ -347,13 +309,12 @@ function updateLiveFeed(type, data) {
     const container = document.getElementById('liveFeedContainer');
     const placeholder = document.getElementById('feedPlaceholder');
     const image = document.getElementById('feedImage');
-    const video = document.getElementById('feedVideo');
     const list = document.getElementById('feedList');
     const loading = document.getElementById('feedLoading');
     const titleEl = document.getElementById('liveFeedTitle');
     const expandBtn = document.getElementById('expandScreenshotBtn');
 
-    if (!container || !placeholder || !image || !video || !list || !loading) {
+    if (!container || !placeholder || !image || !list || !loading) {
         console.error("Critical elements missing for Live Feed updates");
         return;
     }
@@ -365,11 +326,12 @@ function updateLiveFeed(type, data) {
     }
 
     // Reset visibility (Hide all)
-    const elements = [placeholder, image, video, list, loading];
-    elements.forEach(el => {
-        el.style.display = 'none';
-        el.classList.add('hidden');
-    });
+    placeholder.style.display = 'none';
+    image.style.display = 'none';
+    list.style.display = 'none';
+    loading.style.display = 'none';
+    list.classList.add('hidden'); // Ensure Tailwind class is also handled if used elsewhere
+    loading.classList.add('hidden');
     if (expandBtn) expandBtn.classList.add('hidden'); // Hide expand button by default
 
     // Update current mode
@@ -385,10 +347,8 @@ function updateLiveFeed(type, data) {
         loading.style.display = 'flex';
         loading.classList.remove('hidden');
         // Keep placeholder visible behind loading if empty
-        if ((!image.src || image.src.endsWith('#') || image.classList.contains('hidden')) && 
-            video.classList.contains('hidden')) {
+        if (!image.src || image.src.endsWith('#') || image.style.display === 'none') {
             placeholder.style.display = 'block';
-            placeholder.classList.remove('hidden');
         }
         return;
     }
@@ -630,18 +590,18 @@ async function triggerCommand(commandType) {
 
 async function pollForCommandResult(commandId, type, userId) {
     let attempts = 0;
-    const maxAttempts = 12; // 60 seconds total (12 attempts * 5s)
+    const maxAttempts = 15; // 30 seconds
 
     if (commandPollInterval) clearInterval(commandPollInterval);
 
     commandPollInterval = setInterval(async () => {
         attempts++;
         const titleEl = document.getElementById('liveFeedTitle');
-        
         if (attempts > maxAttempts) {
             clearInterval(commandPollInterval);
             log(`Timeout waiting for ${type} result.`, 'warning');
             updateLiveFeed('reset');
+            // Update title to show timeout
             if (titleEl) titleEl.textContent = `${type} Request Timed Out`;
             return;
         }
@@ -703,21 +663,12 @@ async function pollForCommandResult(commandId, type, userId) {
                 }
             }
         } catch (e) {
-            // Stop polling instantly on 500 Internal Server Error (fatal)
-            if (e.message && (e.message.includes('500') || e.message.includes('Internal Server Error'))) {
-                clearInterval(commandPollInterval);
-                log(`Fatal server error: ${e.message}`, 'error');
-                updateLiveFeed('reset');
-                if (titleEl) titleEl.textContent = "Server Error (Capture Failed)";
-                return;
-            }
-
-            // Other errors (404, network): retry unless we hit maxAttempts
-            if (attempts % 5 === 0) log(`Polling...`, 'warning');
-            console.log("Polling error (might be waiting for upload):", e);
+            // Ignore errors while polling, but log fatal ones
+            if (attempts % 5 === 0) log(`Polling error: ${e.message}`, 'warning');
+            console.log("Polling error:", e);
         }
 
-    }, 5000); // 5s interval for capture/upload cycle
+    }, 2000);
 }
 
 // ------ Modals & Helpers ------
@@ -840,7 +791,7 @@ function toggleNavDrawer() {
 
 // ------ Latest Screenshot Functions ------
 
-async function loadLatestScreenshot(userId, forceRefresh = false, signal = null) {
+async function loadLatestScreenshot(userId, forceRefresh = false) {
     if (!userId) return;
 
     // Guard: Don't override if user is looking at Apps or Browser, unless forced (e.g. user selection)
@@ -849,7 +800,7 @@ async function loadLatestScreenshot(userId, forceRefresh = false, signal = null)
     }
 
     try {
-        const data = await api.getLatestScreenshot(userId, signal);
+        const data = await api.getLatestScreenshot(userId);
 
         // Prefer base64 image_data if available
         let imageUrl;
@@ -866,8 +817,6 @@ async function loadLatestScreenshot(userId, forceRefresh = false, signal = null)
         log('Latest screenshot loaded', 'success');
 
     } catch (err) {
-        if (err.name === 'AbortError') return;
-        
         // No screenshot available - this is normal for new users
         console.log('No screenshot available:', err.message);
         // Keep the placeholder visible

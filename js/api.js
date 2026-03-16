@@ -24,7 +24,8 @@ class APIClient {
         } catch (e) { }
 
         const token = encodeURIComponent(this.token);
-        const wsUrl = `${protocol}//${host}/api/v1/ws/events?token=${token}`;
+        const clientId = localStorage.getItem('client_id') || 'everyone';
+        const wsUrl = `${protocol}//${host}/api/v1/ws/events?token=${token}&client_id=${clientId}`;
         console.log("Connecting to Admin Events:", wsUrl);
 
         const ws = new WebSocket(wsUrl);
@@ -33,6 +34,16 @@ class APIClient {
                 const data = JSON.parse(event.data);
                 if (data.type === 'NOTIFICATION_REPLY') {
                     showAdminToast(data.user_name, data.message);
+                } else if (data.type === 'error') {
+                    console.error("Server Error:", data.message);
+                    if (window.log) window.log(data.message, "error");
+                    if (data.message.includes("Token invalid or expired")) {
+                        // Alert user and redirect? 
+                        // For now just log, maybe show a toast
+                        if (typeof showAdminToast === 'function') {
+                            showAdminToast("System", data.message);
+                        }
+                    }
                 }
             } catch (e) {
                 console.error("Failed to parse event data:", e);
@@ -59,6 +70,11 @@ class APIClient {
         const token = localStorage.getItem('access_token');
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const clientId = localStorage.getItem('client_id');
+        if (clientId) {
+            headers['X-Client-ID'] = clientId;
         }
 
         const config = {
@@ -174,6 +190,13 @@ class APIClient {
         if (!token) throw new Error("Invalid response from auth server");
 
         localStorage.setItem('access_token', token);
+        if (clientId) {
+            localStorage.setItem('client_id', clientId);
+        }
+        if (arguments[3]) { // clientName passed as 4th arg
+            localStorage.setItem('client_name', arguments[3]);
+        }
+
         const user = authData.user_info;
         localStorage.setItem('admin_name', user.first_name ? (user.first_name + " " + (user.last_name || "")) : 'Administrator');
         this.token = token;
@@ -274,6 +297,7 @@ class APIClient {
 
     logout() {
         localStorage.removeItem('access_token');
+        localStorage.removeItem('client_id');
         window.location.href = 'login.html';
     }
 }
