@@ -9,6 +9,7 @@ class LiveStreamManager {
         this.loadingEl = document.getElementById('feedLoading');
         this.titleEl = document.getElementById('liveFeedTitle');
         this.reconnectInterval = null;
+        this.heartbeatInterval = null;
         this.isManuallyStopped = false;
 
         // NEW: Toggle State
@@ -142,17 +143,26 @@ class LiveStreamManager {
                 this.titleEl.innerHTML = '<i class="fas fa-video text-emerald-500 mr-2 animate-pulse"></i> LIVE STREAMING (P2P)';
             }
 
+            // START SIGNALING HEARTBEAT
+            this.heartbeatInterval = setInterval(() => {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 30000); // Every 30 seconds
+
             // THE PURPOSE: Create the built-in browser engine for peer-to-peer video streaming (WebRTC). It uses STUN/TURN servers to find the best direct path to the desktop agent.
             // THE REPLACEMENT: Completely replaces the old method of assigning base64 strings to an image element's `.src` property. This provides native video playback and is much smoother.
             const configuration = {
                 iceServers: [
                     {
-                        urls: 'stun:stun.l.google.com:19302' // Free public STUN server
+                        urls: 'turn:157.20.215.17:3478?transport=udp',
+                        username: 'meetuser',
+                        credential: 'Baap@2025'
                     },
                     {
-                        urls: 'turn:turn.example.com:3478', // Replace with valid TURN server for production
-                        username: 'your_turn_username',
-                        credential: 'your_turn_password'
+                        urls: 'turn:157.20.215.17:3478?transport=tcp',
+                        username: 'meetuser',
+                        credential: 'Baap@2025'
                     }
                 ]
             };
@@ -214,24 +224,31 @@ class LiveStreamManager {
 
             this.pc.oniceconnectionstatechange = () => {
                 console.log("ICE Connection State:", this.pc.iceConnectionState);
-                if (this.pc.iceConnectionState === 'disconnected' || this.pc.iceConnectionState === 'failed') {
-                    if (this.titleEl) this.titleEl.textContent = 'Connection Blocked by Firewall.';
-                    // Show error overlay
-                    if (this.placeholderEl) {
-                        this.placeholderEl.style.display = 'block';
-                        this.placeholderEl.innerHTML = `
-                            <div class="text-center p-6 bg-red-900/40 rounded-2xl border border-red-500/50 backdrop-blur-md">
-                                <i class="fas fa-shield-alt text-red-500 text-6xl mb-4 drop-shadow-lg"></i>
-                                <h3 class="text-white font-bold text-lg mb-2">Connection Blocked by Firewall</h3>
-                                <p class="text-red-200 text-xs font-semibold uppercase tracking-widest">(TURN Server Required)</p>
-                            </div>
-                        `;
-                    }
-                    if (this.videoEl) this.videoEl.style.display = 'none';
-                    if (this.loadingEl) {
-                        this.loadingEl.classList.add('hidden');
-                        this.loadingEl.style.display = 'none';
-                    }
+                if (this.pc.iceConnectionState === 'disconnected') {
+                     if (this.titleEl) this.titleEl.textContent = 'Connection Unstable, attempting to reconnect...';
+                } else if (this.pc.iceConnectionState === 'failed') {
+                    // Only show fatal error if it stays failed for a few seconds
+                    setTimeout(() => {
+                        if (this.pc && this.pc.iceConnectionState === 'failed') {
+                            if (this.titleEl) this.titleEl.textContent = 'Connection Blocked by Firewall.';
+                            // Show error overlay
+                            if (this.placeholderEl) {
+                                this.placeholderEl.style.display = 'block';
+                                this.placeholderEl.innerHTML = `
+                                    <div class="text-center p-6 bg-red-900/40 rounded-2xl border border-red-500/50 backdrop-blur-md">
+                                        <i class="fas fa-shield-alt text-red-500 text-6xl mb-4 drop-shadow-lg"></i>
+                                        <h3 class="text-white font-bold text-lg mb-2">Connection Blocked by Firewall</h3>
+                                        <p class="text-red-200 text-xs font-semibold uppercase tracking-widest">(TURN Server Required)</p>
+                                    </div>
+                                `;
+                            }
+                            if (this.videoEl) this.videoEl.style.display = 'none';
+                            if (this.loadingEl) {
+                                this.loadingEl.classList.add('hidden');
+                                this.loadingEl.style.display = 'none';
+                            }
+                        }
+                    }, 5000);
                 }
             };
 
@@ -279,6 +296,10 @@ class LiveStreamManager {
         };
 
         this.ws.onclose = (event) => {
+            if (this.heartbeatInterval) {
+                clearInterval(this.heartbeatInterval);
+                this.heartbeatInterval = null;
+            }
             if (window.api) window.api.debugLog(`WS Closed. Code: ${event.code}, Reason: ${event.reason}`);
             console.log("Signaling WebSocket Closed");
             window.currentLiveFeedMode = 'reset';
@@ -309,6 +330,11 @@ class LiveStreamManager {
         if (this.reconnectInterval) {
             clearTimeout(this.reconnectInterval);
             this.reconnectInterval = null;
+        }
+
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
         }
 
         if (this.ws) {
