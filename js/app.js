@@ -225,7 +225,10 @@ function renderUserList(allUsers, onlineUsers, filterText = '') {
                 </div>
                 <div class="min-w-0 flex-1">
                     <h4 class="font-bold text-gray-900 underline-offset-2 decoration-blue-500/30 group-hover:text-blue-600 transition truncate">${user.name}</h4>
-                    <p class="text-xs text-gray-500 truncate font-medium">${user.email}</p>
+                    <div class="flex items-center gap-2 mt-0.5">
+                        <p class="text-[10px] text-gray-500 truncate font-medium">${user.mobile_number || user.email}</p>
+                        ${user.mobile_number ? `<span class="text-[9px] px-1 bg-blue-50 text-blue-500 rounded font-bold uppercase tracking-tighter">Mobile</span>` : ''}
+                    </div>
                 </div>
                 <i class="fas fa-chevron-right text-xs text-slate-600 group-hover:text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"></i>
             </div>

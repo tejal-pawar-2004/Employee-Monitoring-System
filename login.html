@@ -97,8 +97,7 @@
             <!-- Stage 1: Credentials -->
             <form id="stage1Form" class="space-y-6">
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-2 ml-1 uppercase tracking-wider">Email
-                        Address</label>
+                    <label class="block text-sm font-bold text-gray-700 mb-2 ml-1 uppercase tracking-wider">Work Email</label>
                     <div class="relative group">
                         <i
                             class="fas fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors"></i>
@@ -193,10 +192,16 @@
         // Stage 1 Transition
         stage1Form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('email').value;
+            const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
             const btn = document.getElementById('stage1Btn');
             const originalText = btn.innerHTML;
+
+            // Simple email validation
+            if (!email.includes('@')) {
+                showError("Please enter a valid work email");
+                return;
+            }
 
             btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> Verifying...';
             btn.disabled = true;
@@ -308,7 +313,7 @@
             errorContainer.classList.add('hidden');
 
             try {
-                const email = document.getElementById('email').value;
+                const email = document.getElementById('email').value.trim();
                 const password = document.getElementById('password').value;
 
                 const selectedOrg = allOrganizations.find(o => o.id === selectedOrgId);
